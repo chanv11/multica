@@ -15,7 +15,7 @@ var (
 var rootCmd = &cobra.Command{
 	Use:   "multica",
 	Short: "Multica CLI — local agent runtime and management tool",
-	Long:  "multica manages local agent runtimes and provides control commands for the Multica platform.",
+	Long:  "Work seamlessly with Multica from the command line.",
 	SilenceUsage:  true,
 	SilenceErrors: true,
 }
@@ -24,6 +24,22 @@ func init() {
 	rootCmd.PersistentFlags().String("server-url", "", "Multica server URL (env: MULTICA_SERVER_URL)")
 	rootCmd.PersistentFlags().String("workspace-id", "", "Workspace ID (env: MULTICA_WORKSPACE_ID)")
 	rootCmd.PersistentFlags().String("profile", "", "Configuration profile name (e.g. dev) — isolates config, daemon state, and workspaces")
+
+	// Core commands — primary task management.
+	setGroup(issueCmd, groupCore)
+	setGroup(agentCmd, groupCore)
+	setGroup(workspaceCmd, groupCore)
+
+	// Runtime commands — agent execution.
+	setGroup(daemonCmd, groupRuntime)
+
+	// Additional commands (default group for the rest).
+	setGroup(loginCmd, groupAdditional)
+	setGroup(authCmd, groupAdditional)
+	setGroup(configCmd, groupAdditional)
+	setGroup(repoCmd, groupAdditional)
+	setGroup(updateCmd, groupAdditional)
+	setGroup(versionCmd, groupAdditional)
 
 	rootCmd.AddCommand(loginCmd)
 	rootCmd.AddCommand(authCmd)
@@ -35,6 +51,10 @@ func init() {
 	rootCmd.AddCommand(repoCmd)
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(updateCmd)
+
+	// Apply gh-style help templates.
+	rootCmd.SetHelpFunc(rootHelpFunc)
+	applyHelpFuncs(rootCmd)
 }
 
 func main() {

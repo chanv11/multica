@@ -23,7 +23,7 @@ import (
 
 var daemonCmd = &cobra.Command{
 	Use:   "daemon",
-	Short: "Manage the local agent runtime daemon",
+	Short: "Manage the local agent runtime",
 }
 
 var daemonStartCmd = &cobra.Command{

@@ -16,7 +16,8 @@ import (
 
 var issueCmd = &cobra.Command{
 	Use:   "issue",
-	Short: "Manage issues",
+	Short: "Work with issues",
+	Long:  "Work with Multica issues.",
 }
 
 var issueListCmd = &cobra.Command{
@@ -63,7 +64,7 @@ var issueStatusCmd = &cobra.Command{
 
 var issueCommentCmd = &cobra.Command{
 	Use:   "comment",
-	Short: "Manage issue comments",
+	Short: "Work with issue comments",
 }
 
 var issueCommentListCmd = &cobra.Command{
@@ -108,6 +109,19 @@ var validIssueStatuses = []string{
 }
 
 func init() {
+	// General commands — listing and creation.
+	setGroup(issueListCmd, groupCore)
+	setGroup(issueCreateCmd, groupCore)
+	setGroup(issueGetCmd, groupCore)
+
+	// Targeted commands — operate on specific issues.
+	setGroup(issueUpdateCmd, groupAdditional)
+	setGroup(issueAssignCmd, groupAdditional)
+	setGroup(issueStatusCmd, groupAdditional)
+	setGroup(issueCommentCmd, groupAdditional)
+	setGroup(issueRunsCmd, groupAdditional)
+	setGroup(issueRunMessagesCmd, groupAdditional)
+
 	issueCmd.AddCommand(issueListCmd)
 	issueCmd.AddCommand(issueGetCmd)
 	issueCmd.AddCommand(issueCreateCmd)
