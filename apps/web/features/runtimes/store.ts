@@ -5,15 +5,20 @@ import type { AgentRuntime } from "@/shared/types";
 import { api } from "@/shared/api";
 import { useWorkspaceStore } from "@/features/workspace";
 
+type RuntimeFilter = "mine" | "all";
+
 interface RuntimeState {
   runtimes: AgentRuntime[];
   selectedId: string;
   fetching: boolean;
+  filter: RuntimeFilter;
 }
 
 interface RuntimeActions {
   fetchRuntimes: () => Promise<void>;
   setSelectedId: (id: string) => void;
+  setFilter: (filter: RuntimeFilter) => void;
+  deleteRuntime: (id: string) => Promise<void>;
   /** Patch a single runtime in-place (e.g. status/last_seen_at from WS event). */
   patchRuntime: (id: string, updates: Partial<AgentRuntime>) => void;
   /** Replace the full runtimes list (used on daemon:register events). */
@@ -27,13 +32,18 @@ export const useRuntimeStore = create<RuntimeStore>((set, get) => ({
   runtimes: [],
   selectedId: "",
   fetching: true,
+  filter: "mine",
 
   // Actions
   fetchRuntimes: async () => {
     const workspace = useWorkspaceStore.getState().workspace;
     if (!workspace) return;
     try {
-      const data = await api.listRuntimes({ workspace_id: workspace.id });
+      const { filter } = get();
+      const data = await api.listRuntimes({
+        workspace_id: workspace.id,
+        owner: filter === "mine" ? "me" : undefined,
+      });
       const { selectedId } = get();
       set({
         runtimes: data,
@@ -49,6 +59,22 @@ export const useRuntimeStore = create<RuntimeStore>((set, get) => ({
   },
 
   setSelectedId: (id) => set({ selectedId: id }),
+
+  setFilter: (filter) => {
+    set({ filter });
+    get().fetchRuntimes();
+  },
+
+  deleteRuntime: async (id) => {
+    await api.deleteRuntime(id);
+    // Remove from local state and select next
+    const { runtimes, selectedId } = get();
+    const remaining = runtimes.filter((r) => r.id !== id);
+    const nextSelected = id === selectedId
+      ? remaining[0]?.id ?? ""
+      : selectedId;
+    set({ runtimes: remaining, selectedId: nextSelected });
+  },
 
   patchRuntime: (id, updates) => {
     set((state) => ({
