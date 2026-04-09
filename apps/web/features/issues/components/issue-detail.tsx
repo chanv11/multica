@@ -61,6 +61,7 @@ import { ActorAvatar } from "@/components/common/actor-avatar";
 import type { Issue, UpdateIssueRequest, IssueStatus, IssuePriority, TimelineEntry } from "@/shared/types";
 import { ALL_STATUSES, STATUS_CONFIG, PRIORITY_ORDER, PRIORITY_CONFIG } from "@/features/issues/config";
 import { StatusIcon, PriorityIcon, DueDatePicker, AssigneePicker, canAssignAgent } from "@/features/issues/components";
+import { ProjectPicker } from "@/features/projects/components/project-picker";
 import { CommentCard } from "./comment-card";
 import { CommentInput } from "./comment-input";
 import { AgentLiveCard, TaskRunHistory } from "./agent-live-card";
@@ -1206,6 +1207,14 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
               <PropRow label="Due date">
                 <DueDatePicker
                   dueDate={issue.due_date}
+                  onUpdate={handleUpdateField}
+                />
+              </PropRow>
+
+              {/* Project */}
+              <PropRow label="Project">
+                <ProjectPicker
+                  projectId={issue.project_id}
                   onUpdate={handleUpdateField}
                 />
               </PropRow>
