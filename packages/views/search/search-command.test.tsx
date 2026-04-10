@@ -34,6 +34,9 @@ describe("SearchCommand", () => {
     mockPush.mockReset();
     mockSearchIssues.mockReset().mockResolvedValue({ issues: [] });
 
+    // cmdk calls scrollIntoView on the first selected item, which jsdom doesn't implement
+    Element.prototype.scrollIntoView = vi.fn();
+
     act(() => {
       useSearchStore.setState({ open: true });
     });
@@ -55,5 +58,45 @@ describe("SearchCommand", () => {
       expect(useSearchStore.getState().open).toBe(false);
     });
     expect(screen.queryByPlaceholderText("Type a command or search...")).not.toBeInTheDocument();
+  });
+
+  it("shows all navigation pages when no query is entered", () => {
+    render(<SearchCommand />);
+
+    expect(screen.getByText("Pages")).toBeInTheDocument();
+    expect(screen.getByText("Inbox")).toBeInTheDocument();
+    expect(screen.getByText("My Issues")).toBeInTheDocument();
+    expect(screen.getByText("Issues")).toBeInTheDocument();
+    expect(screen.getByText("Projects")).toBeInTheDocument();
+    expect(screen.getByText("Agents")).toBeInTheDocument();
+    expect(screen.getByText("Runtimes")).toBeInTheDocument();
+    expect(screen.getByText("Skills")).toBeInTheDocument();
+    expect(screen.getByText("Settings")).toBeInTheDocument();
+  });
+
+  it("filters navigation pages by query", async () => {
+    const user = userEvent.setup();
+    render(<SearchCommand />);
+
+    const input = screen.getByPlaceholderText("Type a command or search...");
+    await user.type(input, "set");
+
+    await waitFor(() => {
+      // HighlightText splits text, so use a function matcher
+      expect(screen.getByText((_, el) => el?.textContent === "Settings" && el?.tagName === "SPAN")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Inbox")).not.toBeInTheDocument();
+    expect(screen.queryByText("Projects")).not.toBeInTheDocument();
+  });
+
+  it("navigates to page on selection", async () => {
+    const user = userEvent.setup();
+    render(<SearchCommand />);
+
+    const settingsItem = screen.getByText("Settings");
+    await user.click(settingsItem);
+
+    expect(mockPush).toHaveBeenCalledWith("/settings");
+    expect(useSearchStore.getState().open).toBe(false);
   });
 });
