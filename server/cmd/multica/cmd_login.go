@@ -4,16 +4,12 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"regexp"
-	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/multica-ai/multica/server/internal/cli"
 )
-
-var nonSlugChar = regexp.MustCompile(`[^a-z0-9-]+`)
 
 var loginCmd = &cobra.Command{
 	Use:   "login",
@@ -63,14 +59,15 @@ func autoWatchWorkspaces(cmd *cobra.Command) error {
 	}
 
 	if len(workspaces) == 0 {
-		fmt.Fprintln(os.Stderr, "\nNo workspaces found. Creating one for you...")
-		ws, err := createDefaultWorkspace(ctx, client)
+		var err error
+		workspaces, err = waitForOnboarding(cmd, client)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Could not create workspace: %v\n", err)
-			fmt.Fprintln(os.Stderr, "Create one at the web dashboard, then run 'multica login' again.")
+			return err
+		}
+		if len(workspaces) == 0 {
+			fmt.Fprintln(os.Stderr, "\nNo workspaces found.")
 			return nil
 		}
-		workspaces = append(workspaces, ws)
 	}
 
 	profile := resolveProfile(cmd)
@@ -107,56 +104,45 @@ func autoWatchWorkspaces(cmd *cobra.Command) error {
 	return nil
 }
 
-// nameToSlug converts a human name into a URL-safe slug.
-// E.g. "Alice Zhang" → "alice-zhang".
-func nameToSlug(name string) string {
-	s := strings.ToLower(strings.TrimSpace(name))
-	s = nonSlugChar.ReplaceAllString(s, "-")
-	s = strings.Trim(s, "-")
-	// Collapse consecutive hyphens.
-	for strings.Contains(s, "--") {
-		s = strings.ReplaceAll(s, "--", "-")
-	}
-	if s == "" {
-		s = "my-workspace"
-	}
-	return s
-}
-
-// createDefaultWorkspace creates a workspace for a new user who has none.
-func createDefaultWorkspace(ctx context.Context, client *cli.APIClient) (struct {
+// waitForOnboarding opens the web onboarding page and polls until the user
+// creates a workspace, returning the new workspace list.
+func waitForOnboarding(cmd *cobra.Command, client *cli.APIClient) ([]struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 }, error) {
-	type wsInfo struct {
-		ID   string `json:"id"`
-		Name string `json:"name"`
-	}
-	var zero wsInfo
+	appURL := resolveAppURL(cmd)
+	onboardingURL := appURL + "/onboarding"
 
-	// Fetch the current user's name to derive workspace name/slug.
-	var me struct {
-		Name string `json:"name"`
+	fmt.Fprintln(os.Stderr, "\nNo workspaces found. Opening onboarding in your browser...")
+	if err := openBrowser(onboardingURL); err != nil {
+		fmt.Fprintf(os.Stderr, "Could not open browser automatically.\n")
 	}
-	if err := client.GetJSON(ctx, "/api/me", &me); err != nil {
-		return zero, fmt.Errorf("fetch user info: %w", err)
+	fmt.Fprintf(os.Stderr, "If the browser didn't open, visit:\n  %s\n", onboardingURL)
+	fmt.Fprintln(os.Stderr, "\nWaiting for workspace creation...")
+
+	// Poll until a workspace appears or timeout (5 minutes).
+	const pollInterval = 2 * time.Second
+	const pollTimeout = 5 * time.Minute
+	deadline := time.Now().Add(pollTimeout)
+
+	for time.Now().Before(deadline) {
+		time.Sleep(pollInterval)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		var workspaces []struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		}
+		err := client.GetJSON(ctx, "/api/workspaces", &workspaces)
+		cancel()
+
+		if err != nil {
+			continue // transient error, keep polling
+		}
+		if len(workspaces) > 0 {
+			return workspaces, nil
+		}
 	}
 
-	wsName := strings.TrimSpace(me.Name) + "'s Workspace"
-	slug := nameToSlug(me.Name)
-
-	var created struct {
-		ID   string `json:"id"`
-		Name string `json:"name"`
-	}
-	err := client.PostJSON(ctx, "/api/workspaces", map[string]string{
-		"name": wsName,
-		"slug": slug,
-	}, &created)
-	if err != nil {
-		return zero, fmt.Errorf("create workspace: %w", err)
-	}
-
-	fmt.Fprintf(os.Stderr, "✓ Created workspace %q (%s)\n", created.Name, created.ID)
-	return created, nil
+	return nil, fmt.Errorf("timed out waiting for workspace creation")
 }
