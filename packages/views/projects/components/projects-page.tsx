@@ -38,19 +38,21 @@ import { TitleEditor } from "../../editor";
 import { EmojiPicker } from "@multica/ui/components/common/emoji-picker";
 import type { Project, ProjectStatus, ProjectPriority, UpdateProjectRequest } from "@multica/core/types";
 import { PriorityIcon } from "../../issues/components/priority-icon";
+import { useAppLocale } from "../../i18n";
 
-function formatRelativeDate(date: string): string {
+function formatRelativeDate(date: string, t: import("../../i18n/types").AppDict["projects"]): string {
   const diff = Date.now() - new Date(date).getTime();
   const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-  if (days < 1) return "Today";
-  if (days === 1) return "1d ago";
-  if (days < 30) return `${days}d ago`;
+  if (days < 1) return t.today;
+  if (days === 1) return t.dayAgo;
+  if (days < 30) return t.daysAgo.replace("{days}", String(days));
   const months = Math.floor(days / 30);
-  return `${months}mo ago`;
+  return t.monthsAgo.replace("{months}", String(months));
 }
 
 function ProjectRow({ project }: { project: Project }) {
   const wsId = useWorkspaceId();
+  const { t } = useAppLocale();
   const statusCfg = PROJECT_STATUS_CONFIG[project.status];
   const priorityCfg = PROJECT_PRIORITY_CONFIG[project.priority];
   const updateProject = useUpdateProject();
@@ -167,7 +169,7 @@ function ProjectRow({ project }: { project: Project }) {
               type="text"
               value={leadFilter}
               onChange={(e) => setLeadFilter(e.target.value)}
-              placeholder="Assign lead..."
+              placeholder={t.projects.assignLead}
               className="w-full bg-transparent text-sm placeholder:text-muted-foreground outline-none"
             />
           </div>
@@ -178,11 +180,11 @@ function ProjectRow({ project }: { project: Project }) {
               className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent transition-colors"
             >
               <UserMinus className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="text-muted-foreground">No lead</span>
+              <span className="text-muted-foreground">{t.projects.noLead}</span>
             </button>
             {filteredMembers.length > 0 && (
               <>
-                <div className="px-2 pt-2 pb-1 text-xs font-medium text-muted-foreground uppercase tracking-wider">Members</div>
+                <div className="px-2 pt-2 pb-1 text-xs font-medium text-muted-foreground uppercase tracking-wider">{t.projects.members}</div>
                 {filteredMembers.map((m) => (
                   <button
                     type="button"
@@ -198,7 +200,7 @@ function ProjectRow({ project }: { project: Project }) {
             )}
             {filteredAgents.length > 0 && (
               <>
-                <div className="px-2 pt-2 pb-1 text-xs font-medium text-muted-foreground uppercase tracking-wider">Agents</div>
+                <div className="px-2 pt-2 pb-1 text-xs font-medium text-muted-foreground uppercase tracking-wider">{t.projects.agents}</div>
                 {filteredAgents.map((a) => (
                   <button
                     type="button"
@@ -213,7 +215,7 @@ function ProjectRow({ project }: { project: Project }) {
               </>
             )}
             {filteredMembers.length === 0 && filteredAgents.length === 0 && leadFilter && (
-              <div className="px-2 py-3 text-center text-sm text-muted-foreground">No results</div>
+              <div className="px-2 py-3 text-center text-sm text-muted-foreground">{t.projects.noResults}</div>
             )}
           </div>
         </PopoverContent>
@@ -221,7 +223,7 @@ function ProjectRow({ project }: { project: Project }) {
 
       {/* Created */}
       <span className="w-20 shrink-0 text-right text-xs text-muted-foreground tabular-nums">
-        {formatRelativeDate(project.created_at)}
+        {formatRelativeDate(project.created_at, t.projects)}
       </span>
     </div>
   );
@@ -249,6 +251,7 @@ function PillButton({
 
 function CreateProjectDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const router = useNavigation();
+  const { t } = useAppLocale();
   const workspaceName = useWorkspaceStore((s) => s.workspace?.name);
   const wsId = useWorkspaceId();
   const { data: members = [] } = useQuery(memberListOptions(wsId));
@@ -275,7 +278,7 @@ function CreateProjectDialog({ open, onOpenChange }: { open: boolean; onOpenChan
   const filteredAgents = agents.filter((a) => !a.archived_at && a.name.toLowerCase().includes(leadQuery));
 
   const leadLabel =
-    leadType && leadId ? getActorName(leadType, leadId) : "Lead";
+    leadType && leadId ? getActorName(leadType, leadId) : t.projects.lead;
 
   const createProject = useCreateProject();
 
@@ -299,10 +302,10 @@ function CreateProjectDialog({ open, onOpenChange }: { open: boolean; onOpenChan
       setPriority("none");
       setLeadType(undefined);
       setLeadId(undefined);
-      toast.success("Project created");
+      toast.success(t.projects.projectCreated);
       router.push(`/projects/${project.id}`);
     } catch {
-      toast.error("Failed to create project");
+      toast.error(t.projects.failedToCreateProject);
     } finally {
       setSubmitting(false);
     }
@@ -321,14 +324,14 @@ function CreateProjectDialog({ open, onOpenChange }: { open: boolean; onOpenChan
             : "!max-w-2xl !w-full !h-96 !-translate-y-1/2",
         )}
       >
-        <DialogTitle className="sr-only">New Project</DialogTitle>
+        <DialogTitle className="sr-only">{t.projects.newProjectDialogTitle}</DialogTitle>
 
         {/* Header */}
         <div className="flex items-center justify-between px-5 pt-3 pb-2 shrink-0">
           <div className="flex items-center gap-1.5 text-xs">
             <span className="text-muted-foreground">{workspaceName}</span>
             <ChevronRight className="size-3 text-muted-foreground/50" />
-            <span className="font-medium">New project</span>
+            <span className="font-medium">{t.projects.newProject}</span>
           </div>
           <div className="flex items-center gap-1">
             <Tooltip>
@@ -342,7 +345,7 @@ function CreateProjectDialog({ open, onOpenChange }: { open: boolean; onOpenChan
                   </button>
                 }
               />
-              <TooltipContent side="bottom">{isExpanded ? "Collapse" : "Expand"}</TooltipContent>
+              <TooltipContent side="bottom">{isExpanded ? t.projects.collapse : t.projects.expand}</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger
@@ -355,7 +358,7 @@ function CreateProjectDialog({ open, onOpenChange }: { open: boolean; onOpenChan
                   </button>
                 }
               />
-              <TooltipContent side="bottom">Close</TooltipContent>
+              <TooltipContent side="bottom">{t.projects.close}</TooltipContent>
             </Tooltip>
           </div>
         </div>
@@ -368,7 +371,7 @@ function CreateProjectDialog({ open, onOpenChange }: { open: boolean; onOpenChan
                 <button
                   type="button"
                   className="text-2xl cursor-pointer rounded-lg p-1 -ml-1 hover:bg-accent/60 transition-colors"
-                  title="Choose icon"
+                  title={t.projects.chooseIcon}
                 >
                   {icon || "📁"}
                 </button>
@@ -386,7 +389,7 @@ function CreateProjectDialog({ open, onOpenChange }: { open: boolean; onOpenChan
           <TitleEditor
             autoFocus
             defaultValue=""
-            placeholder="Project title"
+            placeholder={t.projects.projectTitle}
             className="text-lg font-semibold"
             onChange={(v) => setTitle(v)}
             onSubmit={handleSubmit}
@@ -398,7 +401,7 @@ function CreateProjectDialog({ open, onOpenChange }: { open: boolean; onOpenChan
           <ContentEditor
             ref={descEditorRef}
             defaultValue=""
-            placeholder="Add description..."
+            placeholder={t.projects.addDescription}
             debounceMs={500}
           />
         </div>
@@ -456,7 +459,7 @@ function CreateProjectDialog({ open, onOpenChange }: { open: boolean; onOpenChan
                       <span>{leadLabel}</span>
                     </>
                   ) : (
-                    <span className="text-muted-foreground">Lead</span>
+                    <span className="text-muted-foreground">{t.projects.lead}</span>
                   )}
                 </PillButton>
               }
@@ -467,7 +470,7 @@ function CreateProjectDialog({ open, onOpenChange }: { open: boolean; onOpenChan
                   type="text"
                   value={leadFilter}
                   onChange={(e) => setLeadFilter(e.target.value)}
-                  placeholder="Assign lead..."
+                  placeholder={t.projects.assignLead}
                   className="w-full bg-transparent text-sm placeholder:text-muted-foreground outline-none"
                 />
               </div>
@@ -478,11 +481,11 @@ function CreateProjectDialog({ open, onOpenChange }: { open: boolean; onOpenChan
                   className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent transition-colors"
                 >
                   <UserMinus className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span className="text-muted-foreground">No lead</span>
+                  <span className="text-muted-foreground">{t.projects.noLead}</span>
                 </button>
                 {filteredMembers.length > 0 && (
                   <>
-                    <div className="px-2 pt-2 pb-1 text-xs font-medium text-muted-foreground uppercase tracking-wider">Members</div>
+                    <div className="px-2 pt-2 pb-1 text-xs font-medium text-muted-foreground uppercase tracking-wider">{t.projects.members}</div>
                     {filteredMembers.map((m) => (
                       <button
                         type="button"
@@ -498,7 +501,7 @@ function CreateProjectDialog({ open, onOpenChange }: { open: boolean; onOpenChan
                 )}
                 {filteredAgents.length > 0 && (
                   <>
-                    <div className="px-2 pt-2 pb-1 text-xs font-medium text-muted-foreground uppercase tracking-wider">Agents</div>
+                    <div className="px-2 pt-2 pb-1 text-xs font-medium text-muted-foreground uppercase tracking-wider">{t.projects.agents}</div>
                     {filteredAgents.map((a) => (
                       <button
                         type="button"
@@ -513,7 +516,7 @@ function CreateProjectDialog({ open, onOpenChange }: { open: boolean; onOpenChan
                   </>
                 )}
                 {filteredMembers.length === 0 && filteredAgents.length === 0 && leadFilter && (
-                  <div className="px-2 py-3 text-center text-sm text-muted-foreground">No results</div>
+                  <div className="px-2 py-3 text-center text-sm text-muted-foreground">{t.projects.noResults}</div>
                 )}
               </div>
             </PopoverContent>
@@ -523,7 +526,7 @@ function CreateProjectDialog({ open, onOpenChange }: { open: boolean; onOpenChan
         {/* Footer */}
         <div className="flex items-center justify-end px-4 py-3 border-t shrink-0">
           <Button size="sm" onClick={handleSubmit} disabled={!title.trim() || submitting}>
-            {submitting ? "Creating..." : "Create Project"}
+            {submitting ? t.projects.creating : t.projects.createProject}
           </Button>
         </div>
       </DialogContent>
@@ -533,6 +536,7 @@ function CreateProjectDialog({ open, onOpenChange }: { open: boolean; onOpenChan
 
 export function ProjectsPage() {
   const wsId = useWorkspaceId();
+  const { t } = useAppLocale();
   const { data: projects = [], isLoading } = useQuery(projectListOptions(wsId));
   const [createOpen, setCreateOpen] = useState(false);
 
@@ -542,14 +546,14 @@ export function ProjectsPage() {
       <div className="flex h-12 shrink-0 items-center justify-between border-b px-5">
         <div className="flex items-center gap-2">
           <FolderKanban className="h-4 w-4 text-muted-foreground" />
-          <h1 className="text-sm font-medium">Projects</h1>
+          <h1 className="text-sm font-medium">{t.projects.title}</h1>
           {!isLoading && projects.length > 0 && (
             <span className="text-xs text-muted-foreground tabular-nums">{projects.length}</span>
           )}
         </div>
         <Button size="sm" variant="outline" onClick={() => setCreateOpen(true)}>
           <Plus className="h-3.5 w-3.5 mr-1" />
-          New project
+          {t.projects.newProject}
         </Button>
       </div>
 
@@ -564,9 +568,9 @@ export function ProjectsPage() {
         ) : projects.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-muted-foreground">
             <FolderKanban className="h-10 w-10 mb-3 opacity-30" />
-            <p className="text-sm">No projects yet</p>
+            <p className="text-sm">{t.projects.noProjectsYet}</p>
             <Button size="sm" variant="outline" className="mt-3" onClick={() => setCreateOpen(true)}>
-              Create your first project
+              {t.projects.createFirstProject}
             </Button>
           </div>
         ) : (
@@ -575,12 +579,12 @@ export function ProjectsPage() {
             <div className="sticky top-0 z-[1] flex h-8 items-center gap-2 border-b bg-muted/30 px-5 text-xs font-medium text-muted-foreground">
               {/* Icon spacer + Name */}
               <span className="shrink-0 w-[24px]" />
-              <span className="min-w-0 flex-1">Name</span>
-              <span className="w-24 text-center shrink-0">Priority</span>
-              <span className="w-28 text-center shrink-0">Status</span>
-              <span className="w-24 text-center shrink-0">Progress</span>
-              <span className="w-10 text-center shrink-0">Lead</span>
-              <span className="w-20 text-right shrink-0">Created</span>
+              <span className="min-w-0 flex-1">{t.projects.nameColumn}</span>
+              <span className="w-24 text-center shrink-0">{t.projects.priorityColumn}</span>
+              <span className="w-28 text-center shrink-0">{t.projects.statusColumn}</span>
+              <span className="w-24 text-center shrink-0">{t.projects.progressColumn}</span>
+              <span className="w-10 text-center shrink-0">{t.projects.leadColumn}</span>
+              <span className="w-20 text-right shrink-0">{t.projects.createdColumn}</span>
             </div>
             {/* Rows */}
             {projects.map((project) => (

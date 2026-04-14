@@ -5,6 +5,7 @@ import { Toaster } from "@multica/ui/components/ui/sonner";
 import { cn } from "@multica/ui/lib/utils";
 import { WebProviders } from "@/components/web-providers";
 import { LocaleSync } from "@/components/locale-sync";
+import { AppLocaleProvider } from "@multica/views/i18n";
 import "./globals.css";
 
 // Font stack: Inter for Latin UI text + system Chinese fonts for zh content.
@@ -93,12 +94,14 @@ export default function RootLayout({
     >
       <body className="h-full overflow-hidden">
         <LocaleSync />
-        <ThemeProvider>
-          <WebProviders>
-            {children}
-          </WebProviders>
-          <Toaster />
-        </ThemeProvider>
+        <AppLocaleProvider>
+          <ThemeProvider>
+            <WebProviders>
+              {children}
+            </WebProviders>
+            <Toaster />
+          </ThemeProvider>
+        </AppLocaleProvider>
       </body>
     </html>
   );

@@ -23,6 +23,7 @@ import {
 import { api } from "@multica/core/api";
 import { runtimeListOptions } from "@multica/core/runtimes/queries";
 import { ProviderLogo } from "../runtimes/components/provider-logo";
+import { useAppLocale } from "../i18n";
 import type {
   Agent,
   AgentVisibility,
@@ -31,8 +32,6 @@ import type {
 
 interface AgentTemplate {
   id: string;
-  name: string;
-  description: string;
   instructions: string;
   icon: typeof Crown;
 }
@@ -40,16 +39,12 @@ interface AgentTemplate {
 const AGENT_TEMPLATES: AgentTemplate[] = [
   {
     id: "master",
-    name: "Master Agent",
-    description: "Manages workspace, assigns tasks, and coordinates work",
     instructions:
       "You are a Master Agent for this workspace. Your role is to manage and coordinate tasks, triage incoming issues, and ensure work is distributed effectively across the team.",
     icon: Crown,
   },
   {
     id: "coding",
-    name: "Coding Agent",
-    description: "Checks out code, implements features, and submits PRs",
     instructions:
       "You are a Coding Agent. Your role is to check out code repositories, implement features and bug fixes based on issue descriptions, write tests, and submit pull requests.",
     icon: Code,
@@ -66,7 +61,13 @@ export function StepAgent({
   onAgentCreated: (agent: Agent) => void;
 }) {
   const { data: runtimes = [] } = useQuery(runtimeListOptions(wsId));
+  const { t } = useAppLocale();
   const hasRuntime = runtimes.length > 0;
+
+  const templateLabels: Record<string, { name: string; description: string }> = {
+    master: { name: t.onboarding.templateMasterAgent, description: t.onboarding.templateMasterAgentDesc },
+    coding: { name: t.onboarding.templateCodingAgent, description: t.onboarding.templateCodingAgentDesc },
+  };
 
   // Template selection
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(
@@ -94,8 +95,8 @@ export function StepAgent({
 
   const handleSelectTemplate = (template: AgentTemplate) => {
     setSelectedTemplateId(template.id);
-    setName(template.name);
-    setDescription(template.description);
+    setName(templateLabels[template.id]?.name ?? template.id);
+    setDescription(templateLabels[template.id]?.description ?? "");
     setShowForm(true);
   };
 
@@ -116,7 +117,7 @@ export function StepAgent({
       onNext();
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Failed to create agent",
+        err instanceof Error ? err.message : t.onboarding.failedToCreateAgent,
       );
       setCreating(false);
     }
@@ -126,10 +127,10 @@ export function StepAgent({
     <div className="flex w-full max-w-lg flex-col items-center gap-8">
       <div className="text-center">
         <h1 className="text-3xl font-semibold tracking-tight">
-          Create Your First Agent
+          {t.onboarding.createFirstAgentTitle}
         </h1>
         <p className="mt-2 text-muted-foreground">
-          Choose a template to get started, then customize your agent.
+          {t.onboarding.createFirstAgentDescription}
         </p>
       </div>
 
@@ -138,8 +139,7 @@ export function StepAgent({
         <div className="flex w-full items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 px-4 py-3 text-sm text-warning">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
           <p>
-            No runtime connected. Go back to connect a runtime, or skip and set
-            one up later.
+            {t.onboarding.noRuntimeWarning}
           </p>
         </div>
       )}
@@ -166,9 +166,9 @@ export function StepAgent({
                 <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-muted text-muted-foreground">
                   <Icon className="h-5 w-5" />
                 </div>
-                <h3 className="font-semibold">{template.name}</h3>
+                <h3 className="font-semibold">{templateLabels[template.id]?.name ?? template.id}</h3>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  {template.description}
+                  {templateLabels[template.id]?.description ?? ""}
                 </p>
               </Card>
             );
@@ -181,30 +181,30 @@ export function StepAgent({
         <Card className="w-full p-5 space-y-4">
           {/* Name */}
           <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Agent Name</Label>
+            <Label className="text-xs text-muted-foreground">{t.onboarding.agentNameLabel}</Label>
             <Input
               autoFocus
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Coding Agent"
+              placeholder={t.onboarding.agentNamePlaceholder}
             />
           </div>
 
           {/* Description */}
           <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Description</Label>
+            <Label className="text-xs text-muted-foreground">{t.onboarding.descriptionLabel}</Label>
             <Input
               type="text"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="What does this agent do?"
+              placeholder={t.onboarding.descriptionPlaceholder}
             />
           </div>
 
           {/* Runtime selector */}
           <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Runtime</Label>
+            <Label className="text-xs text-muted-foreground">{t.onboarding.runtimeLabel}</Label>
             <Popover open={runtimeOpen} onOpenChange={setRuntimeOpen}>
               <PopoverTrigger
                 disabled={!hasRuntime}
@@ -221,7 +221,7 @@ export function StepAgent({
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="truncate font-medium">
-                      {selectedRuntime?.name ?? "No runtime available"}
+                      {selectedRuntime?.name ?? t.onboarding.noRuntimeAvailable}
                     </span>
                     {selectedRuntime?.runtime_mode === "cloud" && (
                       <span className="shrink-0 rounded bg-info/10 px-1.5 py-0.5 text-xs font-medium text-info">
@@ -232,7 +232,7 @@ export function StepAgent({
                   <div className="truncate text-xs text-muted-foreground">
                     {selectedRuntime
                       ? `${selectedRuntime.provider} · ${selectedRuntime.device_info}`
-                      : "Connect a runtime first"}
+                      : t.onboarding.connectRuntimeFirst}
                   </div>
                 </div>
                 <ChevronDown
@@ -288,7 +288,7 @@ export function StepAgent({
 
           {/* Visibility */}
           <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Visibility</Label>
+            <Label className="text-xs text-muted-foreground">{t.onboarding.visibilityLabel}</Label>
             <div className="flex gap-2">
               <button
                 type="button"
@@ -301,9 +301,9 @@ export function StepAgent({
               >
                 <Globe className="h-4 w-4 shrink-0 text-muted-foreground" />
                 <div className="text-left">
-                  <div className="font-medium">Workspace</div>
+                  <div className="font-medium">{t.onboarding.visibilityWorkspace}</div>
                   <div className="text-xs text-muted-foreground">
-                    All members can assign
+                    {t.onboarding.visibilityWorkspaceDesc}
                   </div>
                 </div>
               </button>
@@ -318,9 +318,9 @@ export function StepAgent({
               >
                 <Lock className="h-4 w-4 shrink-0 text-muted-foreground" />
                 <div className="text-left">
-                  <div className="font-medium">Private</div>
+                  <div className="font-medium">{t.onboarding.visibilityPrivate}</div>
                   <div className="text-xs text-muted-foreground">
-                    Only you can assign
+                    {t.onboarding.visibilityPrivateDesc}
                   </div>
                 </div>
               </button>
@@ -339,7 +339,7 @@ export function StepAgent({
               onClick={handleCreate}
               disabled={creating || !name.trim() || !selectedRuntime}
             >
-              {creating ? "Creating..." : "Create Agent"}
+              {creating ? t.onboarding.creatingAgent : t.onboarding.createAgentButton}
             </Button>
             <button
               type="button"
@@ -349,7 +349,7 @@ export function StepAgent({
               }}
               className="text-sm text-muted-foreground underline-offset-4 hover:underline"
             >
-              Back to templates
+              {t.onboarding.backToTemplates}
             </button>
           </>
         ) : (
@@ -358,7 +358,7 @@ export function StepAgent({
             onClick={onNext}
             className="text-sm text-muted-foreground underline-offset-4 hover:underline"
           >
-            Skip for now
+            {t.onboarding.skipForNow}
           </button>
         )}
       </div>

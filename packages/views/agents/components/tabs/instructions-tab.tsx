@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Loader2, Save } from "lucide-react";
 import type { Agent } from "@multica/core/types";
 import { Button } from "@multica/ui/components/ui/button";
+import { useAppLocale } from "../../../i18n";
 
 export function InstructionsTab({
   agent,
@@ -14,6 +15,7 @@ export function InstructionsTab({
 }) {
   const [value, setValue] = useState(agent.instructions ?? "");
   const [saving, setSaving] = useState(false);
+  const { t } = useAppLocale();
   const isDirty = value !== (agent.instructions ?? "");
 
   // Sync when switching between agents.
@@ -35,10 +37,9 @@ export function InstructionsTab({
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="text-sm font-semibold">Agent Instructions</h3>
+        <h3 className="text-sm font-semibold">{t.agents.agentInstructions}</h3>
         <p className="text-xs text-muted-foreground mt-0.5">
-          Define this agent&apos;s identity and working style. These instructions are
-          injected into the agent&apos;s context for every task.
+          {t.agents.agentInstructionsDesc}
         </p>
       </div>
 
@@ -51,7 +52,7 @@ export function InstructionsTab({
 
       <div className="flex items-center justify-between">
         <span className="text-xs text-muted-foreground">
-          {value.length > 0 ? `${value.length} characters` : "No instructions set"}
+          {value.length > 0 ? `${value.length} ${t.agents.characters}` : t.agents.noInstructionsSet}
         </span>
         <Button
           size="xs"
@@ -63,7 +64,7 @@ export function InstructionsTab({
           ) : (
             <Save className="h-3 w-3" />
           )}
-          Save
+          {t.common.save}
         </Button>
       </div>
     </div>

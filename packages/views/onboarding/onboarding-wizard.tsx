@@ -3,29 +3,33 @@
 import { useCallback, useEffect, useState } from "react";
 import { useWorkspaceStore } from "@multica/core/workspace";
 import type { Agent } from "@multica/core/types";
+import { useAppLocale } from "../i18n";
 import { StepWorkspace } from "./step-workspace";
 import { StepRuntime } from "./step-runtime";
 import { StepAgent } from "./step-agent";
 import { StepComplete } from "./step-complete";
 
-const STEPS = [
-  { label: "Workspace" },
-  { label: "Runtime" },
-  { label: "Agent" },
-  { label: "Get Started" },
-] as const;
+const STEP_COUNT = 4;
 
 export interface OnboardingWizardProps {
   onComplete: () => void;
 }
 
 export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
+  const { t } = useAppLocale();
   const [step, setStep] = useState(() =>
     useWorkspaceStore.getState().workspace ? 1 : 0,
   );
   const [createdAgent, setCreatedAgent] = useState<Agent | null>(null);
 
   const wsId = useWorkspaceStore((s) => s.workspace?.id) ?? null;
+
+  const stepLabels = [
+    t.onboarding.stepWorkspace,
+    t.onboarding.stepRuntime,
+    t.onboarding.stepAgent,
+    t.onboarding.stepGetStarted,
+  ];
 
   useEffect(() => {
     if (step === 0 && wsId) {
@@ -36,7 +40,7 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
   const startWorkspaceSetup = useCallback(() => setStep(1), []);
 
   const next = useCallback(
-    () => setStep((s) => Math.min(s + 1, STEPS.length - 1)),
+    () => setStep((s) => Math.min(s + 1, STEP_COUNT - 1)),
     [],
   );
 
@@ -44,8 +48,8 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
     <div className="flex min-h-svh flex-col bg-background">
       {/* Progress bar */}
       <div className="flex items-center justify-center gap-2 px-6 pt-8">
-        {STEPS.map((s, i) => (
-          <div key={s.label} className="flex items-center gap-2">
+        {stepLabels.map((label, i) => (
+          <div key={label} className="flex items-center gap-2">
             <div className="flex items-center gap-1.5">
               <div
                 className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium transition-colors ${
@@ -77,10 +81,10 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
                     : "text-muted-foreground"
                 }`}
               >
-                {s.label}
+                {label}
               </span>
             </div>
-            {i < STEPS.length - 1 && (
+            {i < STEP_COUNT - 1 && (
               <div
                 className={`h-px w-8 ${i < step ? "bg-primary" : "bg-border"}`}
               />

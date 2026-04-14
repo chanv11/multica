@@ -5,6 +5,7 @@ import { Check, ArrowRight, Loader2, Bot } from "lucide-react";
 import { Button } from "@multica/ui/components/ui/button";
 import { Card } from "@multica/ui/components/ui/card";
 import { api } from "@multica/core/api";
+import { useAppLocale } from "../i18n";
 import type { Agent, Issue, CreateIssueRequest } from "@multica/core/types";
 
 interface OnboardingIssueDef {
@@ -100,6 +101,7 @@ export function StepComplete({
   const [createdIssues, setCreatedIssues] = useState<Issue[]>([]);
   const [loading, setLoading] = useState(true);
   const didCreate = useRef(false);
+  const { t } = useAppLocale();
 
   useEffect(() => {
     if (didCreate.current) return;
@@ -143,12 +145,12 @@ export function StepComplete({
 
       <div className="text-center">
         <h1 className="text-3xl font-semibold tracking-tight">
-          You&apos;re all set!
+          {t.onboarding.allSetTitle}
         </h1>
         <p className="mt-2 text-muted-foreground">
           {agent
-            ? `Your workspace is ready and ${agent.name} is picking up its first task.`
-            : "Your workspace is ready. Create issues and assign them to agents to get started."}
+            ? t.onboarding.allSetDescriptionWithAgent.replace("{agentName}", agent.name)
+            : t.onboarding.allSetDescriptionWithoutAgent}
         </p>
       </div>
 
@@ -156,7 +158,7 @@ export function StepComplete({
       {loading ? (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
-          <span>Setting up your workspace...</span>
+          <span>{t.onboarding.settingUpWorkspace}</span>
         </div>
       ) : (
         createdIssues.length > 0 && (
@@ -172,10 +174,10 @@ export function StepComplete({
                   </div>
                   <div className="truncate text-xs text-muted-foreground">
                     {issue.assignee_id && agent
-                      ? `Assigned to ${agent.name}`
+                      ? `${t.onboarding.assignedTo} ${agent.name}`
                       : issue.status === "todo"
-                        ? "To do"
-                        : "Backlog"}
+                        ? t.status.todo
+                        : t.status.backlog}
                   </div>
                 </div>
                 {issue.assignee_id && agent && (
@@ -195,7 +197,7 @@ export function StepComplete({
         onClick={onEnter}
         disabled={loading}
       >
-        Go to Workspace
+        {t.onboarding.goToWorkspace}
         <ArrowRight className="ml-2 h-4 w-4" />
       </Button>
     </div>

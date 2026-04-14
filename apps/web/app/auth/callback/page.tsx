@@ -16,6 +16,7 @@ import {
 } from "@multica/ui/components/ui/card";
 import { Button } from "@multica/ui/components/ui/button";
 import { Loader2 } from "lucide-react";
+import { useAppLocale } from "@multica/views/i18n";
 
 function CallbackContent() {
   const router = useRouter();
@@ -23,19 +24,20 @@ function CallbackContent() {
   const qc = useQueryClient();
   const loginWithGoogle = useAuthStore((s) => s.loginWithGoogle);
   const hydrateWorkspace = useWorkspaceStore((s) => s.hydrateWorkspace);
+  const { t } = useAppLocale();
   const [error, setError] = useState("");
   const [desktopToken, setDesktopToken] = useState<string | null>(null);
 
   useEffect(() => {
     const code = searchParams.get("code");
     if (!code) {
-      setError("Missing authorization code");
+      setError(t.auth.missingAuthCode);
       return;
     }
 
     const errorParam = searchParams.get("error");
     if (errorParam) {
-      setError(errorParam === "access_denied" ? "Access denied" : errorParam);
+      setError(errorParam === "access_denied" ? t.auth.accessDenied : errorParam);
       return;
     }
 
@@ -56,7 +58,7 @@ function CallbackContent() {
           window.location.href = `multica://auth/callback?token=${encodeURIComponent(token)}`;
         })
         .catch((err) => {
-          setError(err instanceof Error ? err.message : "Login failed");
+          setError(err instanceof Error ? err.message : t.auth.loginFailedGeneric);
         });
     } else {
       // Normal web flow
@@ -71,7 +73,7 @@ function CallbackContent() {
           router.push(nextUrl || defaultDest);
         })
         .catch((err) => {
-          setError(err instanceof Error ? err.message : "Login failed");
+          setError(err instanceof Error ? err.message : t.auth.loginFailedGeneric);
         });
     }
   }, [searchParams, loginWithGoogle, hydrateWorkspace, router, qc]);
@@ -81,10 +83,9 @@ function CallbackContent() {
       <div className="flex min-h-screen items-center justify-center">
         <Card className="w-full max-w-sm">
           <CardHeader className="text-center">
-            <CardTitle className="text-2xl">Opening Multica</CardTitle>
+            <CardTitle className="text-2xl">{t.auth.openingApp}</CardTitle>
             <CardDescription>
-              You should see a prompt to open the Multica desktop app. If
-              nothing happens, click the button below.
+              {t.auth.openingAppDescription}
             </CardDescription>
           </CardHeader>
           <CardContent className="flex justify-center">
@@ -94,7 +95,7 @@ function CallbackContent() {
                 window.location.href = `multica://auth/callback?token=${encodeURIComponent(desktopToken)}`;
               }}
             >
-              Open Multica Desktop
+              {t.auth.openDesktopApp}
             </Button>
           </CardContent>
         </Card>
@@ -107,12 +108,12 @@ function CallbackContent() {
       <div className="flex min-h-screen items-center justify-center">
         <Card className="w-full max-w-sm">
           <CardHeader className="text-center">
-            <CardTitle className="text-2xl">Login Failed</CardTitle>
+            <CardTitle className="text-2xl">{t.auth.loginFailed}</CardTitle>
             <CardDescription>{error}</CardDescription>
           </CardHeader>
           <CardContent className="flex justify-center">
             <a href="/login" className="text-primary underline-offset-4 hover:underline">
-              Back to login
+              {t.auth.backToLogin}
             </a>
           </CardContent>
         </Card>
@@ -124,8 +125,8 @@ function CallbackContent() {
     <div className="flex min-h-screen items-center justify-center">
       <Card className="w-full max-w-sm">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl">Signing in...</CardTitle>
-          <CardDescription>Please wait while we complete your login</CardDescription>
+          <CardTitle className="text-2xl">{t.auth.signingIn}</CardTitle>
+          <CardDescription>{t.auth.signingInDescription}</CardDescription>
         </CardHeader>
         <CardContent className="flex justify-center">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />

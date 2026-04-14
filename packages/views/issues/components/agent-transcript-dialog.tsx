@@ -24,6 +24,7 @@ import { ActorAvatar } from "../../common/actor-avatar";
 import { api } from "@multica/core/api";
 import type { AgentTask, Agent, AgentRuntime } from "@multica/core/types/agent";
 import { redactSecrets } from "../utils/redact";
+import { useAppLocale } from "../../i18n";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -163,6 +164,7 @@ export function AgentTranscriptDialog({
   agentName,
   isLive = false,
 }: AgentTranscriptDialogProps) {
+  const { t } = useAppLocale();
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [elapsed, setElapsed] = useState("");
   const [copied, setCopied] = useState(false);
@@ -241,17 +243,17 @@ export function AgentTranscriptDialog({
   const statusBadge = isLive ? (
     <span className="inline-flex items-center gap-1 rounded-full bg-info/15 px-2 py-0.5 text-xs font-medium text-info">
       <Loader2 className="h-3 w-3 animate-spin" />
-      Running
+      {t.agentTranscript.running}
     </span>
   ) : task.status === "completed" ? (
     <span className="inline-flex items-center gap-1 rounded-full bg-success/15 px-2 py-0.5 text-xs font-medium text-success">
       <CheckCircle2 className="h-3 w-3" />
-      Completed
+      {t.agentTranscript.completed}
     </span>
   ) : task.status === "failed" ? (
     <span className="inline-flex items-center gap-1 rounded-full bg-destructive/15 px-2 py-0.5 text-xs font-medium text-destructive">
       <XCircle className="h-3 w-3" />
-      Failed
+      {t.agentTranscript.failed}
     </span>
   ) : (
     <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground capitalize">
@@ -265,7 +267,7 @@ export function AgentTranscriptDialog({
         className="!max-w-4xl !w-[calc(100vw-4rem)] !max-h-[calc(100vh-4rem)] !h-[calc(100vh-4rem)] flex flex-col !p-0 !gap-0 overflow-hidden"
         showCloseButton={false}
       >
-        <DialogTitle className="sr-only">Agent Execution Transcript</DialogTitle>
+        <DialogTitle className="sr-only">{t.agentTranscript.dialogTitle}</DialogTitle>
 
         {/* ── Header ─────────────────────────────────────────────── */}
         <div className="border-b px-4 py-3 shrink-0 space-y-2">
@@ -290,7 +292,7 @@ export function AgentTranscriptDialog({
                 className="flex items-center gap-1 rounded px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
               >
                 {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                {copied ? "Copied" : "Copy all"}
+                {copied ? t.agentTranscript.copied : t.agentTranscript.copyAll}
               </button>
               <button
                 onClick={() => onOpenChange(false)}
@@ -336,9 +338,9 @@ export function AgentTranscriptDialog({
 
             {/* Event counts */}
             {toolCount > 0 && (
-              <MetadataChip>{toolCount} tool calls</MetadataChip>
+              <MetadataChip>{t.agentTranscript.toolCalls.replace("{count}", String(toolCount))}</MetadataChip>
             )}
-            <MetadataChip>{items.length} events</MetadataChip>
+            <MetadataChip>{t.agentTranscript.events.replace("{count}", String(items.length))}</MetadataChip>
 
             {/* Created time */}
             {task.created_at && (
@@ -375,10 +377,10 @@ export function AgentTranscriptDialog({
               {isLive ? (
                 <div className="flex items-center gap-2">
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Waiting for events...
+                  {t.agentTranscript.waitingForEvents}
                 </div>
               ) : (
-                "No execution data recorded."
+                t.agentTranscript.noExecutionData
               )}
             </div>
           ) : (
