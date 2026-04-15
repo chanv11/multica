@@ -521,3 +521,93 @@ func TestMCPServerRouteRegistration(t *testing.T) {
 		t.Fatalf("route DELETE /{id}: expected 204, got %d: %s", w.Code, w.Body.String())
 	}
 }
+
+func TestCreateMCPServerDuplicateName(t *testing.T) {
+	// Create first server
+	w := httptest.NewRecorder()
+	req := newRequest("POST", "/api/mcp-servers?workspace_id="+testWorkspaceID, map[string]any{
+		"name":        "Duplicate Test Server",
+		"description": "First server",
+		"config":      map[string]any{"command": "node"},
+	})
+	testHandler.CreateMCPServer(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("first create: expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	var first MCPServerResponse
+	json.NewDecoder(w.Body).Decode(&first)
+
+	// Try to create a second server with the same name in the same workspace
+	w = httptest.NewRecorder()
+	req = newRequest("POST", "/api/mcp-servers?workspace_id="+testWorkspaceID, map[string]any{
+		"name":        "Duplicate Test Server",
+		"description": "Second server",
+		"config":      map[string]any{"command": "python"},
+	})
+	testHandler.CreateMCPServer(w, req)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("duplicate create: expected 409, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Clean up
+	delReq := newRequest("DELETE", "/api/mcp-servers/"+first.ID, nil)
+	delReq = withURLParam(delReq, "id", first.ID)
+	testHandler.DeleteMCPServer(httptest.NewRecorder(), delReq)
+}
+
+func TestUpdateMCPServerDuplicateName(t *testing.T) {
+	// Create two servers with different names
+	w := httptest.NewRecorder()
+	req := newRequest("POST", "/api/mcp-servers?workspace_id="+testWorkspaceID, map[string]any{
+		"name":   "Server A",
+		"config": map[string]any{"command": "node"},
+	})
+	testHandler.CreateMCPServer(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create server A: expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	var serverA MCPServerResponse
+	json.NewDecoder(w.Body).Decode(&serverA)
+
+	w = httptest.NewRecorder()
+	req = newRequest("POST", "/api/mcp-servers?workspace_id="+testWorkspaceID, map[string]any{
+		"name":   "Server B",
+		"config": map[string]any{"command": "python"},
+	})
+	testHandler.CreateMCPServer(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create server B: expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	var serverB MCPServerResponse
+	json.NewDecoder(w.Body).Decode(&serverB)
+
+	// Try to rename server B to server A's name
+	w = httptest.NewRecorder()
+	req = newRequest("PUT", "/api/mcp-servers/"+serverB.ID, map[string]any{
+		"name": "Server A",
+	})
+	req = withURLParam(req, "id", serverB.ID)
+	testHandler.UpdateMCPServer(w, req)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("update with duplicate name: expected 409, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Clean up
+	for _, id := range []string{serverA.ID, serverB.ID} {
+		delReq := newRequest("DELETE", "/api/mcp-servers/"+id, nil)
+		delReq = withURLParam(delReq, "id", id)
+		testHandler.DeleteMCPServer(httptest.NewRecorder(), delReq)
+	}
+}
+
+func TestUpdateMCPServerNotFound(t *testing.T) {
+	w := httptest.NewRecorder()
+	req := newRequest("PUT", "/api/mcp-servers/00000000-0000-0000-0000-000000000099", map[string]any{
+		"name": "Does Not Exist",
+	})
+	req = withURLParam(req, "id", "00000000-0000-0000-0000-000000000099")
+	testHandler.UpdateMCPServer(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("update non-existent: expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+}

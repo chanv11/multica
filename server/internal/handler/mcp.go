@@ -167,6 +167,10 @@ func (h *Handler) CreateMCPServer(w http.ResponseWriter, r *http.Request) {
 		CreatedBy:   member.ID,
 	})
 	if err != nil {
+		if isUniqueViolation(err) {
+			writeError(w, http.StatusConflict, "an MCP server with this name already exists")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "failed to create MCP server")
 		return
 	}
@@ -178,16 +182,6 @@ func (h *Handler) UpdateMCPServer(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	workspaceID := resolveWorkspaceID(r)
 	if _, ok := h.workspaceMember(w, r, workspaceID); !ok {
-		return
-	}
-
-	// Verify the server exists in this workspace
-	existing, err := h.Queries.GetMCPServerInWorkspace(r.Context(), db.GetMCPServerInWorkspaceParams{
-		ID:          parseUUID(id),
-		WorkspaceID: parseUUID(workspaceID),
-	})
-	if err != nil {
-		writeError(w, http.StatusNotFound, "MCP server not found")
 		return
 	}
 
@@ -210,25 +204,25 @@ func (h *Handler) UpdateMCPServer(w http.ResponseWriter, r *http.Request) {
 
 	if req.Name != nil {
 		params.Name = pgtype.Text{String: *req.Name, Valid: true}
-	} else {
-		params.Name = pgtype.Text{String: existing.Name, Valid: true}
 	}
-
 	if req.Description != nil {
 		params.Description = pgtype.Text{String: *req.Description, Valid: true}
-	} else {
-		params.Description = pgtype.Text{String: existing.Description, Valid: true}
 	}
-
 	if req.Config != nil {
-		config, _ := json.Marshal(req.Config)
-		params.Config = config
-	} else {
-		params.Config = existing.Config
+		configBytes, _ := json.Marshal(req.Config)
+		params.Config = configBytes
 	}
 
 	server, err := h.Queries.UpdateMCPServer(r.Context(), params)
 	if err != nil {
+		if isNotFound(err) {
+			writeError(w, http.StatusNotFound, "MCP server not found")
+			return
+		}
+		if isUniqueViolation(err) {
+			writeError(w, http.StatusConflict, "an MCP server with this name already exists")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "failed to update MCP server")
 		return
 	}
@@ -243,7 +237,9 @@ func (h *Handler) DeleteMCPServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify the server exists in this workspace
+	// Pre-read is required for workspace-scoped authorization: DeleteMCPServer SQL
+	// only filters by id, not workspace_id, so without this check a user could
+	// delete an MCP server belonging to another workspace.
 	_, err := h.Queries.GetMCPServerInWorkspace(r.Context(), db.GetMCPServerInWorkspaceParams{
 		ID:          parseUUID(id),
 		WorkspaceID: parseUUID(workspaceID),
