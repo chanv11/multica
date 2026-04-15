@@ -10,6 +10,20 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// normalizeHandlerJSON is a test helper for JSON comparison.
+func normalizeHandlerJSON(t *testing.T, s string) string {
+	t.Helper()
+	var v any
+	if err := json.Unmarshal([]byte(s), &v); err != nil {
+		t.Fatalf("invalid JSON in test: %v\ninput: %s", err, s)
+	}
+	out, err := json.Marshal(v)
+	if err != nil {
+		t.Fatalf("re-marshal JSON: %v", err)
+	}
+	return string(out)
+}
+
 func TestMCPServerCRUD(t *testing.T) {
 	// Create
 	w := httptest.NewRecorder()
@@ -880,4 +894,228 @@ func TestAgentMCPBindingRouteRegistration(t *testing.T) {
 	})
 	clearReq = withURLParam(clearReq, "id", agentID)
 	testHandler.ReplaceAgentMCPBindings(httptest.NewRecorder(), clearReq)
+}
+
+// ---------------------------------------------------------------------------
+// handlerResolveMCPVars tests
+// ---------------------------------------------------------------------------
+
+func TestHandlerResolveMCPVars(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		config  string
+		env     map[string]string
+		want    string
+		wantErr bool
+	}{
+		{
+			name:   "no placeholders",
+			config: `{"command":"echo","args":["hello"]}`,
+			env:    nil,
+			want:   `{"command":"echo","args":["hello"]}`,
+		},
+		{
+			name:   "single var in string",
+			config: `{"command":"${MY_CMD}","args":["hello"]}`,
+			env:    map[string]string{"MY_CMD": "/usr/bin/echo"},
+			want:   `{"command":"/usr/bin/echo","args":["hello"]}`,
+		},
+		{
+			name:   "var in array element",
+			config: `{"command":"echo","args":["${API_URL}","--verbose"]}`,
+			env:    map[string]string{"API_URL": "https://example.com/api"},
+			want:   `{"command":"echo","args":["https://example.com/api","--verbose"]}`,
+		},
+		{
+			name:   "multiple vars in same string",
+			config: `{"url":"${HOST}:${PORT}"}`,
+			env:    map[string]string{"HOST": "localhost", "PORT": "8080"},
+			want:   `{"url":"localhost:8080"}`,
+		},
+		{
+			name:   "var in nested object",
+			config: `{"outer":{"inner":"${SECRET}"}}`,
+			env:    map[string]string{"SECRET": "abc123"},
+			want:   `{"outer":{"inner":"abc123"}}`,
+		},
+		{
+			name:   "non-placeholder string preserved",
+			config: `{"command":"echo ${LITERAL} text","key":"no-vars-here"}`,
+			env:    map[string]string{"LITERAL": "hello"},
+			want:   `{"command":"echo hello text","key":"no-vars-here"}`,
+		},
+		{
+			name:    "missing var returns error",
+			config:  `{"command":"${MISSING_VAR}"}`,
+			env:     map[string]string{"OTHER": "value"},
+			wantErr: true,
+		},
+		{
+			name:    "missing var among multiple returns error",
+			config:  `{"a":"${FOUND}","b":"${MISSING}"}`,
+			env:     map[string]string{"FOUND": "yes"},
+			wantErr: true,
+		},
+		{
+			name:   "boolean and number values unchanged",
+			config: `{"bool":true,"num":42,"str":"${VAR}"}`,
+			env:    map[string]string{"VAR": "hello"},
+			want:   `{"bool":true,"num":42,"str":"hello"}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := handlerResolveMCPVars([]byte(tt.config), tt.env)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("handlerResolveMCPVars() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr {
+				return
+			}
+			want := normalizeHandlerJSON(t, tt.want)
+			result := normalizeHandlerJSON(t, string(got))
+			if result != want {
+				t.Errorf("handlerResolveMCPVars()\ngot:  %s\nwant: %s", result, want)
+			}
+		})
+	}
+}
+
+func TestHandlerResolveMCPVarsMissingVarErrorMessage(t *testing.T) {
+	t.Parallel()
+
+	config := `{"command":"${MISSING_VAR}","args":["${ANOTHER_MISSING}"]}`
+	_, err := handlerResolveMCPVars([]byte(config), map[string]string{})
+	if err == nil {
+		t.Fatal("expected error for missing vars")
+	}
+
+	errMsg := err.Error()
+	if !containsSub(errMsg, "MISSING_VAR") {
+		t.Errorf("error should mention MISSING_VAR, got: %s", errMsg)
+	}
+}
+
+func containsSub(s, sub string) bool {
+	for i := 0; i <= len(s)-len(sub); i++ {
+		if s[i:i+len(sub)] == sub {
+			return true
+		}
+	}
+	return false
+}
+
+// ---------------------------------------------------------------------------
+// buildMCPConfigFromBindings tests (integration with DB)
+// ---------------------------------------------------------------------------
+
+func TestBuildMCPConfigFromBindings_NoBindings(t *testing.T) {
+	agentID := helperAgentID(t)
+	ctx := context.Background()
+
+	result, err := testHandler.buildMCPConfigFromBindings(ctx, parseUUID(agentID), nil)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if result != nil {
+		t.Fatalf("expected nil for no bindings, got: %v", result)
+	}
+}
+
+func TestBuildMCPConfigFromBindings_WithResolvedVars(t *testing.T) {
+	agentID := helperAgentID(t)
+	ctx := context.Background()
+
+	// Create MCP server with ${VAR} placeholder in config.
+	serverID := helperCreateMCPServer(t, "Resolved Var Server")
+	defer helperDeleteMCPServer(t, serverID)
+
+	// Update the config to contain a ${VAR} placeholder.
+	_, err := testPool.Exec(ctx, `
+		UPDATE workspace_mcp_server SET config = $1 WHERE id = $2
+	`, `{"command":"${MY_CMD}","args":["hello"]}`, serverID)
+	if err != nil {
+		t.Fatalf("failed to update MCP config: %v", err)
+	}
+
+	// Bind the MCP server to the agent.
+	_, err = testPool.Exec(ctx, `
+		INSERT INTO agent_mcp_binding (agent_id, mcp_server_id, enabled, sort_order)
+		VALUES ($1, $2, true, 0)
+		ON CONFLICT DO NOTHING
+	`, agentID, serverID)
+	if err != nil {
+		t.Fatalf("failed to create binding: %v", err)
+	}
+	defer func() {
+		testPool.Exec(ctx, `DELETE FROM agent_mcp_binding WHERE agent_id = $1 AND mcp_server_id = $2`, agentID, serverID)
+	}()
+
+	env := map[string]string{"MY_CMD": "/usr/bin/echo"}
+	result, err := testHandler.buildMCPConfigFromBindings(ctx, parseUUID(agentID), env)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	resultMap, ok := result.(map[string]any)
+	if !ok {
+		t.Fatalf("expected map[string]any, got %T", result)
+	}
+	servers, ok := resultMap["mcpServers"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected mcpServers map, got %T", resultMap["mcpServers"])
+	}
+	serverConfig, ok := servers["Resolved Var Server"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected server config map, got %T", servers["Resolved Var Server"])
+	}
+	if serverConfig["command"] != "/usr/bin/echo" {
+		t.Errorf("expected command '/usr/bin/echo', got %v", serverConfig["command"])
+	}
+}
+
+func TestBuildMCPConfigFromBindings_MissingVar(t *testing.T) {
+	agentID := helperAgentID(t)
+	ctx := context.Background()
+
+	// Create MCP server with ${VAR} placeholder in config.
+	serverID := helperCreateMCPServer(t, "Missing Var Server")
+	defer helperDeleteMCPServer(t, serverID)
+
+	_, err := testPool.Exec(ctx, `
+		UPDATE workspace_mcp_server SET config = $1 WHERE id = $2
+	`, `{"command":"${MISSING_CMD}"}`, serverID)
+	if err != nil {
+		t.Fatalf("failed to update MCP config: %v", err)
+	}
+
+	// Bind the MCP server to the agent.
+	_, err = testPool.Exec(ctx, `
+		INSERT INTO agent_mcp_binding (agent_id, mcp_server_id, enabled, sort_order)
+		VALUES ($1, $2, true, 0)
+		ON CONFLICT DO NOTHING
+	`, agentID, serverID)
+	if err != nil {
+		t.Fatalf("failed to create binding: %v", err)
+	}
+	defer func() {
+		testPool.Exec(ctx, `DELETE FROM agent_mcp_binding WHERE agent_id = $1 AND mcp_server_id = $2`, agentID, serverID)
+	}()
+
+	// Empty env — MISSING_CMD is not provided.
+	_, err = testHandler.buildMCPConfigFromBindings(ctx, parseUUID(agentID), map[string]string{})
+	if err == nil {
+		t.Fatal("expected error for missing var, got nil")
+	}
+	if !containsSub(err.Error(), "Missing Var Server") {
+		t.Errorf("error should mention MCP server name, got: %s", err.Error())
+	}
+	if !containsSub(err.Error(), "MISSING_CMD") {
+		t.Errorf("error should mention the missing var, got: %s", err.Error())
+	}
 }

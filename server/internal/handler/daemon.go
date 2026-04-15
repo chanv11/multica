@@ -392,15 +392,11 @@ func (h *Handler) ClaimTaskByRuntime(w http.ResponseWriter, r *http.Request) {
 				slog.Warn("failed to unmarshal agent custom_env", "agent_id", uuidToString(agent.ID), "error", err)
 			}
 		}
-		// Extract MCP servers from runtime_config.
-		var mcpServers any
-		if agent.RuntimeConfig != nil {
-			var rc map[string]any
-			if err := json.Unmarshal(agent.RuntimeConfig, &rc); err != nil {
-				slog.Warn("failed to unmarshal agent runtime_config", "agent_id", uuidToString(agent.ID), "error", err)
-			} else if ms, ok := rc["mcp_servers"]; ok {
-				mcpServers = ms
-			}
+		// Build MCP config from agent bindings with ${VAR} resolution.
+		mcpServers, mcpErr := h.buildMCPConfigFromBindings(r.Context(), agent.ID, customEnv)
+		if mcpErr != nil {
+			writeError(w, http.StatusBadRequest, mcpErr.Error())
+			return
 		}
 		resp.Agent = &TaskAgentData{
 			ID:           uuidToString(agent.ID),

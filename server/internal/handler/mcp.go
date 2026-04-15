@@ -1,9 +1,14 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
+	"regexp"
+	"sort"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -376,4 +381,124 @@ func (h *Handler) ReplaceAgentMCPBindings(w http.ResponseWriter, r *http.Request
 		resp[i] = bindingToResponse(b)
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// ---------------------------------------------------------------------------
+// Binding-driven MCP aggregation for daemon claim
+// ---------------------------------------------------------------------------
+
+// mcpVarPattern matches ${VAR_NAME} placeholders in MCP config strings.
+var mcpVarPattern = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
+
+// buildMCPConfigFromBindings queries the agent's bound MCP servers and
+// aggregates them into the Claude-native format:
+//
+//	{"mcpServers": {"<name>": <resolved_config>, ...}}
+//
+// ${VAR} placeholders in each MCP server's config are resolved from the
+// provided env map. Missing variables cause an explicit error naming the
+// MCP server, the variable, and the agent.
+func (h *Handler) buildMCPConfigFromBindings(ctx context.Context, agentID pgtype.UUID, env map[string]string) (any, error) {
+	servers, err := h.Queries.GetBoundMCPServersForAgent(ctx, agentID)
+	if err != nil {
+		return nil, fmt.Errorf("query MCP bindings: %w", err)
+	}
+	if len(servers) == 0 {
+		return nil, nil
+	}
+
+	mcpServers := make(map[string]any, len(servers))
+	for _, srv := range servers {
+		resolved, resolveErr := handlerResolveMCPVars(srv.Config, env)
+		if resolveErr != nil {
+			slog.Warn("MCP config has unresolved variables",
+				"mcp_name", srv.Name,
+				"error", resolveErr,
+			)
+			return nil, fmt.Errorf("MCP server %q: %w", srv.Name, resolveErr)
+		}
+
+		var configObj any
+		if err := json.Unmarshal(resolved, &configObj); err != nil {
+			return nil, fmt.Errorf("MCP server %q: invalid JSON config: %w", srv.Name, err)
+		}
+		mcpServers[srv.Name] = configObj
+	}
+
+	return map[string]any{"mcpServers": mcpServers}, nil
+}
+
+// handlerResolveMCPVars walks a JSON config recursively and replaces ${VAR}
+// placeholders with values from the env map. Returns an error listing all
+// variables that could not be resolved.
+func handlerResolveMCPVars(config []byte, env map[string]string) ([]byte, error) {
+	if env == nil {
+		env = map[string]string{}
+	}
+
+	var root any
+	if err := json.Unmarshal(config, &root); err != nil {
+		return nil, fmt.Errorf("invalid JSON config: %w", err)
+	}
+
+	var missing []string
+	resolved := mcpResolveValue(root, env, &missing)
+
+	if len(missing) > 0 {
+		sort.Strings(missing)
+		return nil, fmt.Errorf("unresolved ${%s} in MCP config", strings.Join(missing, "}, ${"))
+	}
+
+	return json.Marshal(resolved)
+}
+
+// mcpResolveValue recursively walks a JSON value and resolves placeholders in strings.
+func mcpResolveValue(v any, env map[string]string, missing *[]string) any {
+	switch val := v.(type) {
+	case map[string]any:
+		result := make(map[string]any, len(val))
+		for k, v := range val {
+			result[k] = mcpResolveValue(v, env, missing)
+		}
+		return result
+	case []any:
+		result := make([]any, len(val))
+		for i, elem := range val {
+			result[i] = mcpResolveValue(elem, env, missing)
+		}
+		return result
+	case string:
+		return mcpResolveString(val, env, missing)
+	default:
+		return v
+	}
+}
+
+// mcpResolveString replaces ${VAR} patterns in a single string value.
+func mcpResolveString(s string, env map[string]string, missing *[]string) string {
+	if !strings.Contains(s, "${") {
+		return s
+	}
+
+	vars := mcpVarPattern.FindAllStringSubmatch(s, -1)
+	seen := make(map[string]bool, len(vars))
+	for _, match := range vars {
+		name := match[1]
+		if _, ok := env[name]; !ok && !seen[name] {
+			*missing = append(*missing, name)
+			seen[name] = true
+		}
+	}
+
+	if len(*missing) > 0 {
+		return s
+	}
+
+	return mcpVarPattern.ReplaceAllStringFunc(s, func(match string) string {
+		sub := mcpVarPattern.FindStringSubmatch(match)
+		if len(sub) >= 2 {
+			return env[sub[1]]
+		}
+		return match
+	})
 }
