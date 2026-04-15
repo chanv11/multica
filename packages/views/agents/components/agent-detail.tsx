@@ -174,12 +174,7 @@ export function AgentDetail({
             onSave={(updates) => onUpdate(agent.id, updates)}
           />
         )}
-        {activeTab === "mcp" && (
-          <MCPTab
-            agent={agent}
-            onSave={(updates) => onUpdate(agent.id, updates)}
-          />
-        )}
+        {activeTab === "mcp" && <MCPTab agent={agent} />}
         {activeTab === "settings" && (
           <SettingsTab
             agent={agent}

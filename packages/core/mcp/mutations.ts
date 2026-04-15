@@ -43,6 +43,7 @@ export function useReplaceAgentMCPBindings(wsId: string, agentId: string) {
       api.replaceAgentMCPBindings(agentId, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: mcpKeys.list(wsId) });
+      qc.invalidateQueries({ queryKey: mcpKeys.agentBindings(wsId, agentId) });
     },
   });
 }
