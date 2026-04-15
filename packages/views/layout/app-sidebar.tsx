@@ -30,6 +30,7 @@ import {
   Ellipsis,
   PinOff,
   Zap,
+  Server,
 } from "lucide-react";
 import { WorkspaceAvatar } from "../workspace/workspace-avatar";
 import { ActorAvatar } from "@multica/ui/components/common/actor-avatar";
@@ -83,6 +84,7 @@ const workspaceNav = [
 
 const configureNav = [
   { href: "/runtimes", label: "Runtimes", icon: Monitor },
+  { href: "/mcp", label: "MCP", icon: Server },
   { href: "/skills", label: "Skills", icon: BookOpenText },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
