@@ -1,8 +1,15 @@
 export type AgentStatus = "idle" | "working" | "blocked" | "error" | "offline";
 
+import type { MCPServersConfig } from "./mcp";
+
 export type AgentRuntimeMode = "local" | "cloud";
 
 export type AgentVisibility = "workspace" | "private";
+
+export interface AgentRuntimeConfig {
+  mcp_servers?: MCPServersConfig;
+  [key: string]: unknown;
+}
 
 export interface RuntimeDevice {
   id: string;
@@ -46,7 +53,7 @@ export interface Agent {
   instructions: string;
   avatar_url: string | null;
   runtime_mode: AgentRuntimeMode;
-  runtime_config: Record<string, unknown>;
+  runtime_config: AgentRuntimeConfig;
   custom_env: Record<string, string>;
   visibility: AgentVisibility;
   status: AgentStatus;
@@ -65,7 +72,7 @@ export interface CreateAgentRequest {
   instructions?: string;
   avatar_url?: string;
   runtime_id: string;
-  runtime_config?: Record<string, unknown>;
+  runtime_config?: AgentRuntimeConfig;
   custom_env?: Record<string, string>;
   visibility?: AgentVisibility;
   max_concurrent_tasks?: number;
@@ -77,7 +84,7 @@ export interface UpdateAgentRequest {
   instructions?: string;
   avatar_url?: string;
   runtime_id?: string;
-  runtime_config?: Record<string, unknown>;
+  runtime_config?: AgentRuntimeConfig;
   custom_env?: Record<string, string>;
   visibility?: AgentVisibility;
   status?: AgentStatus;

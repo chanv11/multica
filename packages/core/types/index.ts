@@ -21,6 +21,7 @@ export type {
   RuntimeUpdate,
   RuntimeUpdateStatus,
   IssueUsageSummary,
+  AgentRuntimeConfig,
 } from "./agent";
 export type { MCPServerConfig, MCPServersConfig } from "./mcp";
 export type { Workspace, WorkspaceRepo, Member, MemberRole, User, MemberWithUser, Invitation } from "./workspace";
