@@ -246,5 +246,5 @@ func writeMCPConfig(workDir string, mcpServers any) error {
 	if err != nil {
 		return fmt.Errorf("marshal mcp config: %w", err)
 	}
-	return os.WriteFile(mcpPath, data, 0o644)
+	return os.WriteFile(mcpPath, data, 0o600)
 }

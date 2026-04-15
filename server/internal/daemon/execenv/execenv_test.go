@@ -1001,3 +1001,30 @@ func TestReadGCMeta_NoFile(t *testing.T) {
 		t.Fatal("expected error for missing file")
 	}
 }
+
+func TestWriteMCPConfigFileMode(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	mcpServers := map[string]any{
+		"test-server": map[string]any{
+			"command": "echo",
+			"args":    []string{"hello"},
+		},
+	}
+
+	if err := writeMCPConfig(dir, mcpServers); err != nil {
+		t.Fatalf("writeMCPConfig failed: %v", err)
+	}
+
+	mcpPath := filepath.Join(dir, ".mcp.json")
+	info, err := os.Stat(mcpPath)
+	if err != nil {
+		t.Fatalf("failed to stat .mcp.json: %v", err)
+	}
+
+	perm := info.Mode().Perm()
+	if perm != 0o600 {
+		t.Errorf(".mcp.json permissions = %04o, want 0600", perm)
+	}
+}
