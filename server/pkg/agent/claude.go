@@ -363,6 +363,9 @@ func buildClaudeArgs(opts ExecOptions) []string {
 	if opts.ResumeSessionID != "" {
 		args = append(args, "--resume", opts.ResumeSessionID)
 	}
+	if opts.MCPConfigPath != "" {
+		args = append(args, "--mcp-config", opts.MCPConfigPath)
+	}
 	return args
 }
 

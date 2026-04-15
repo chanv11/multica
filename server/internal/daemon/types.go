@@ -45,6 +45,7 @@ type AgentData struct {
 	Instructions string            `json:"instructions"`
 	Skills       []SkillData       `json:"skills"`
 	CustomEnv    map[string]string `json:"custom_env,omitempty"`
+	MCPServers   any               `json:"mcp_servers,omitempty"` // from agent.runtime_config.mcp_servers
 }
 
 // SkillData represents a structured skill for task execution.

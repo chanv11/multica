@@ -382,7 +382,7 @@ func (h *Handler) ClaimTaskByRuntime(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Build response with fresh agent data (name + skills + custom_env).
+	// Build response with fresh agent data (name + skills + custom_env + mcp_servers).
 	resp := taskToResponse(*task)
 	if agent, err := h.Queries.GetAgent(r.Context(), task.AgentID); err == nil {
 		skills := h.TaskService.LoadAgentSkills(r.Context(), task.AgentID)
@@ -392,12 +392,23 @@ func (h *Handler) ClaimTaskByRuntime(w http.ResponseWriter, r *http.Request) {
 				slog.Warn("failed to unmarshal agent custom_env", "agent_id", uuidToString(agent.ID), "error", err)
 			}
 		}
+		// Extract MCP servers from runtime_config.
+		var mcpServers any
+		if agent.RuntimeConfig != nil {
+			var rc map[string]any
+			if err := json.Unmarshal(agent.RuntimeConfig, &rc); err == nil {
+				if ms, ok := rc["mcp_servers"]; ok {
+					mcpServers = ms
+				}
+			}
+		}
 		resp.Agent = &TaskAgentData{
 			ID:           uuidToString(agent.ID),
 			Name:         agent.Name,
 			Instructions: agent.Instructions,
 			Skills:       skills,
 			CustomEnv:    customEnv,
+			MCPServers:   mcpServers,
 		}
 	}
 

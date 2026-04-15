@@ -38,6 +38,7 @@ type TaskContextForEnv struct {
 	AgentSkills       []SkillContextForEnv
 	Repos             []RepoContextForEnv // workspace repos available for checkout
 	ChatSessionID     string              // non-empty for chat tasks
+	MCPServers        any                 // MCP server config from agent.runtime_config.mcp_servers
 }
 
 // SkillContextForEnv represents a skill to be written into the execution environment.
@@ -107,6 +108,11 @@ func Prepare(params PrepareParams, logger *slog.Logger) (*Environment, error) {
 		return nil, fmt.Errorf("execenv: write context files: %w", err)
 	}
 
+	// Write MCP server config if present.
+	if err := writeMCPConfig(workDir, params.Task.MCPServers); err != nil {
+		return nil, fmt.Errorf("execenv: write mcp config: %w", err)
+	}
+
 	// For Codex, set up a per-task CODEX_HOME seeded from ~/.codex/ with skills.
 	if params.Provider == "codex" {
 		codexHome := filepath.Join(envRoot, "codex-home")
@@ -141,6 +147,11 @@ func Reuse(workDir, provider string, task TaskContextForEnv, logger *slog.Logger
 	// Refresh context files (issue_context.md, skills).
 	if err := writeContextFiles(workDir, provider, task); err != nil {
 		logger.Warn("execenv: refresh context files failed", "error", err)
+	}
+
+	// Refresh MCP config.
+	if err := writeMCPConfig(workDir, task.MCPServers); err != nil {
+		logger.Warn("execenv: refresh mcp config failed", "error", err)
 	}
 
 	// Restore CodexHome for Codex provider — the per-task codex-home directory
@@ -221,4 +232,17 @@ func (env *Environment) Cleanup(removeAll bool) error {
 		return err
 	}
 	return nil
+}
+
+// writeMCPConfig writes a .mcp.json file into the workdir if MCP servers are configured.
+// The file is passed to Claude Code via --mcp-config.
+func writeMCPConfig(workDir string, mcpServers any) error {
+	if mcpServers == nil {
+		return nil
+	}
+	data, err := json.Marshal(mcpServers)
+	if err != nil {
+		return fmt.Errorf("marshal mcp config: %w", err)
+	}
+	return os.WriteFile(filepath.Join(workDir, ".mcp.json"), data, 0o644)
 }

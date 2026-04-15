@@ -821,6 +821,12 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, taskLo
 		AgentSkills:       convertSkillsForEnv(skills),
 		Repos:             convertReposForEnv(task.Repos),
 		ChatSessionID:     task.ChatSessionID,
+		MCPServers: func() any {
+			if task.Agent != nil {
+				return task.Agent.MCPServers
+			}
+			return nil
+		}(),
 	}
 
 	// Try to reuse the workdir from a previous task on the same (agent, issue) pair.
@@ -918,6 +924,10 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, taskLo
 		Model:           entry.Model,
 		Timeout:         d.cfg.AgentTimeout,
 		ResumeSessionID: task.PriorSessionID,
+	}
+
+	if task.Agent != nil && task.Agent.MCPServers != nil {
+		execOpts.MCPConfigPath = filepath.Join(env.WorkDir, ".mcp.json")
 	}
 
 	result, tools, err := d.executeAndDrain(ctx, backend, prompt, execOpts, taskLog, task.ID)
