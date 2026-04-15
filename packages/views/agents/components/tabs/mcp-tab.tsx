@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Plus, Trash2, Info, Loader2, Server } from "lucide-react";
 import type { Agent } from "@multica/core/types";
 import { useQuery } from "@tanstack/react-query";
@@ -20,7 +20,6 @@ import { toast } from "sonner";
 
 interface MCPTabProps {
   agent: Agent;
-  onSave?: (updates: Partial<Agent>) => Promise<void>;
 }
 
 export function MCPTab({ agent }: MCPTabProps) {
@@ -34,17 +33,12 @@ export function MCPTab({ agent }: MCPTabProps) {
     () => new Set(bindings.map((b) => b.mcp_server_id)),
     [bindings],
   );
-  const [localBoundIds, setLocalBoundIds] = useState<Set<string>>(boundServerIds);
+  const [localBoundIds, setLocalBoundIds] = useState<Set<string>>(new Set());
 
-  // Reset local state when server data arrives
-  const [initialized, setInitialized] = useState(false);
-  if (bindings.length > 0 && !initialized) {
+  // Sync local state when server data arrives or changes
+  useEffect(() => {
     setLocalBoundIds(boundServerIds);
-    setInitialized(true);
-  } else if (bindings.length === 0 && !initialized && availableServers.length > 0) {
-    // No bindings exist yet — local state starts empty
-    setInitialized(true);
-  }
+  }, [boundServerIds]);
 
   const currentlyBound = useMemo(
     () => availableServers.filter((s) => localBoundIds.has(s.id)),
