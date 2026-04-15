@@ -611,3 +611,273 @@ func TestUpdateMCPServerNotFound(t *testing.T) {
 		t.Fatalf("update non-existent: expected 404, got %d: %s", w.Code, w.Body.String())
 	}
 }
+
+// --- Agent MCP Binding tests ---
+
+// helperAgentID returns the ID of the agent created by the test fixture.
+func helperAgentID(t *testing.T) string {
+	t.Helper()
+	ctx := context.Background()
+	var agentID string
+	err := testPool.QueryRow(ctx,
+		`SELECT id FROM agent WHERE workspace_id = $1 AND name = $2`,
+		testWorkspaceID, "Handler Test Agent",
+	).Scan(&agentID)
+	if err != nil {
+		t.Fatalf("failed to find test agent: %v", err)
+	}
+	return agentID
+}
+
+// helperCreateMCPServer creates an MCP server in the test workspace and returns its ID.
+func helperCreateMCPServer(t *testing.T, name string) string {
+	t.Helper()
+	w := httptest.NewRecorder()
+	req := newRequest("POST", "/api/mcp-servers?workspace_id="+testWorkspaceID, map[string]any{
+		"name":        name,
+		"description": "test server",
+		"config":      map[string]any{"command": "node"},
+	})
+	testHandler.CreateMCPServer(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create MCP server: expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp MCPServerResponse
+	json.NewDecoder(w.Body).Decode(&resp)
+	return resp.ID
+}
+
+// helperDeleteMCPServer removes an MCP server by ID.
+func helperDeleteMCPServer(t *testing.T, id string) {
+	t.Helper()
+	req := newRequest("DELETE", "/api/mcp-servers/"+id, nil)
+	req = withURLParam(req, "id", id)
+	testHandler.DeleteMCPServer(httptest.NewRecorder(), req)
+}
+
+func TestGetAgentMCPBindingsEmpty(t *testing.T) {
+	agentID := helperAgentID(t)
+
+	w := httptest.NewRecorder()
+	req := newRequest("GET", "/api/agents/"+agentID+"/mcp-bindings", nil)
+	req = withURLParam(req, "id", agentID)
+	testHandler.GetAgentMCPBindings(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("GetAgentMCPBindings: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var bindings []AgentMCPBindingResponse
+	json.NewDecoder(w.Body).Decode(&bindings)
+	if len(bindings) != 0 {
+		t.Fatalf("expected 0 bindings, got %d", len(bindings))
+	}
+}
+
+func TestReplaceAgentMCPBindings(t *testing.T) {
+	agentID := helperAgentID(t)
+	server1 := helperCreateMCPServer(t, "Binding Test Server 1")
+	server2 := helperCreateMCPServer(t, "Binding Test Server 2")
+	defer func() {
+		helperDeleteMCPServer(t, server1)
+		helperDeleteMCPServer(t, server2)
+	}()
+
+	// Replace with two servers
+	w := httptest.NewRecorder()
+	req := newRequest("PUT", "/api/agents/"+agentID+"/mcp-bindings", map[string]any{
+		"mcp_server_ids": []string{server1, server2},
+	})
+	req = withURLParam(req, "id", agentID)
+	testHandler.ReplaceAgentMCPBindings(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("ReplaceAgentMCPBindings: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var bindings []AgentMCPBindingResponse
+	json.NewDecoder(w.Body).Decode(&bindings)
+	if len(bindings) != 2 {
+		t.Fatalf("expected 2 bindings, got %d", len(bindings))
+	}
+	if bindings[0].MCPServerID != server1 {
+		t.Fatalf("expected first binding server_id %s, got %s", server1, bindings[0].MCPServerID)
+	}
+	if bindings[0].SortOrder != 0 {
+		t.Fatalf("expected first binding sort_order 0, got %d", bindings[0].SortOrder)
+	}
+	if bindings[1].MCPServerID != server2 {
+		t.Fatalf("expected second binding server_id %s, got %s", server2, bindings[1].MCPServerID)
+	}
+	if bindings[1].SortOrder != 1 {
+		t.Fatalf("expected second binding sort_order 1, got %d", bindings[1].SortOrder)
+	}
+	if !bindings[0].Enabled || !bindings[1].Enabled {
+		t.Fatal("expected all bindings to be enabled")
+	}
+
+	// Verify GET returns the same
+	w = httptest.NewRecorder()
+	req = newRequest("GET", "/api/agents/"+agentID+"/mcp-bindings", nil)
+	req = withURLParam(req, "id", agentID)
+	testHandler.GetAgentMCPBindings(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("GetAgentMCPBindings: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	json.NewDecoder(w.Body).Decode(&bindings)
+	if len(bindings) != 2 {
+		t.Fatalf("expected 2 bindings from GET, got %d", len(bindings))
+	}
+}
+
+func TestReplaceAgentMCPBindingsOverwrites(t *testing.T) {
+	agentID := helperAgentID(t)
+	server1 := helperCreateMCPServer(t, "Overwrite Server 1")
+	server2 := helperCreateMCPServer(t, "Overwrite Server 2")
+	defer func() {
+		helperDeleteMCPServer(t, server1)
+		helperDeleteMCPServer(t, server2)
+	}()
+
+	// Set initial binding
+	w := httptest.NewRecorder()
+	req := newRequest("PUT", "/api/agents/"+agentID+"/mcp-bindings", map[string]any{
+		"mcp_server_ids": []string{server1},
+	})
+	req = withURLParam(req, "id", agentID)
+	testHandler.ReplaceAgentMCPBindings(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("first replace: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Replace with different set
+	w = httptest.NewRecorder()
+	req = newRequest("PUT", "/api/agents/"+agentID+"/mcp-bindings", map[string]any{
+		"mcp_server_ids": []string{server2},
+	})
+	req = withURLParam(req, "id", agentID)
+	testHandler.ReplaceAgentMCPBindings(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("second replace: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var bindings []AgentMCPBindingResponse
+	json.NewDecoder(w.Body).Decode(&bindings)
+	if len(bindings) != 1 {
+		t.Fatalf("expected 1 binding after overwrite, got %d", len(bindings))
+	}
+	if bindings[0].MCPServerID != server2 {
+		t.Fatalf("expected binding to server2, got %s", bindings[0].MCPServerID)
+	}
+}
+
+func TestReplaceAgentMCPBindingsEmptyList(t *testing.T) {
+	agentID := helperAgentID(t)
+	server1 := helperCreateMCPServer(t, "Empty List Server")
+	defer helperDeleteMCPServer(t, server1)
+
+	// Set initial binding
+	w := httptest.NewRecorder()
+	req := newRequest("PUT", "/api/agents/"+agentID+"/mcp-bindings", map[string]any{
+		"mcp_server_ids": []string{server1},
+	})
+	req = withURLParam(req, "id", agentID)
+	testHandler.ReplaceAgentMCPBindings(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("initial replace: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Clear bindings with empty list
+	w = httptest.NewRecorder()
+	req = newRequest("PUT", "/api/agents/"+agentID+"/mcp-bindings", map[string]any{
+		"mcp_server_ids": []string{},
+	})
+	req = withURLParam(req, "id", agentID)
+	testHandler.ReplaceAgentMCPBindings(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("clear replace: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var bindings []AgentMCPBindingResponse
+	json.NewDecoder(w.Body).Decode(&bindings)
+	if len(bindings) != 0 {
+		t.Fatalf("expected 0 bindings after clear, got %d", len(bindings))
+	}
+}
+
+func TestReplaceAgentMCPBindingsInvalidServerID(t *testing.T) {
+	agentID := helperAgentID(t)
+
+	w := httptest.NewRecorder()
+	req := newRequest("PUT", "/api/agents/"+agentID+"/mcp-bindings", map[string]any{
+		"mcp_server_ids": []string{"00000000-0000-0000-0000-000000000099"},
+	})
+	req = withURLParam(req, "id", agentID)
+	testHandler.ReplaceAgentMCPBindings(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid server ID, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestGetAgentMCPBindingsAgentNotFound(t *testing.T) {
+	w := httptest.NewRecorder()
+	req := newRequest("GET", "/api/agents/00000000-0000-0000-0000-000000000099/mcp-bindings", nil)
+	req = withURLParam(req, "id", "00000000-0000-0000-0000-000000000099")
+	testHandler.GetAgentMCPBindings(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for non-existent agent, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestReplaceAgentMCPBindingsAgentNotFound(t *testing.T) {
+	w := httptest.NewRecorder()
+	req := newRequest("PUT", "/api/agents/00000000-0000-0000-0000-000000000099/mcp-bindings", map[string]any{
+		"mcp_server_ids": []string{},
+	})
+	req = withURLParam(req, "id", "00000000-0000-0000-0000-000000000099")
+	testHandler.ReplaceAgentMCPBindings(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for non-existent agent, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestAgentMCPBindingRouteRegistration(t *testing.T) {
+	agentID := helperAgentID(t)
+	server1 := helperCreateMCPServer(t, "Route Test Server")
+	defer helperDeleteMCPServer(t, server1)
+
+	r := chi.NewRouter()
+	r.Route("/api/agents/{id}", func(r chi.Router) {
+		r.Get("/mcp-bindings", testHandler.GetAgentMCPBindings)
+		r.Put("/mcp-bindings", testHandler.ReplaceAgentMCPBindings)
+	})
+
+	// Test PUT via router
+	w := httptest.NewRecorder()
+	req := newRequest("PUT", "/api/agents/"+agentID+"/mcp-bindings", map[string]any{
+		"mcp_server_ids": []string{server1},
+	})
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("route PUT /mcp-bindings: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var bindings []AgentMCPBindingResponse
+	json.NewDecoder(w.Body).Decode(&bindings)
+	if len(bindings) != 1 {
+		t.Fatalf("expected 1 binding, got %d", len(bindings))
+	}
+
+	// Test GET via router
+	w = httptest.NewRecorder()
+	req = newRequest("GET", "/api/agents/"+agentID+"/mcp-bindings", nil)
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("route GET /mcp-bindings: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Clean up bindings
+	clearReq := newRequest("PUT", "/api/agents/"+agentID+"/mcp-bindings", map[string]any{
+		"mcp_server_ids": []string{},
+	})
+	clearReq = withURLParam(clearReq, "id", agentID)
+	testHandler.ReplaceAgentMCPBindings(httptest.NewRecorder(), clearReq)
+}

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -255,4 +256,124 @@ func (h *Handler) DeleteMCPServer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// --- Agent-MCP Binding handlers ---
+
+type AgentMCPBindingResponse struct {
+	AgentID     string `json:"agent_id"`
+	MCPServerID string `json:"mcp_server_id"`
+	Enabled     bool   `json:"enabled"`
+	SortOrder   int32  `json:"sort_order"`
+	CreatedAt   string `json:"created_at"`
+}
+
+type ReplaceAgentMCPBindingsRequest struct {
+	MCPServerIDs []string `json:"mcp_server_ids"`
+}
+
+func bindingToResponse(b db.AgentMcpBinding) AgentMCPBindingResponse {
+	return AgentMCPBindingResponse{
+		AgentID:     uuidToString(b.AgentID),
+		MCPServerID: uuidToString(b.McpServerID),
+		Enabled:     b.Enabled,
+		SortOrder:   b.SortOrder,
+		CreatedAt:   timestampToString(b.CreatedAt),
+	}
+}
+
+func (h *Handler) GetAgentMCPBindings(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	agent, ok := h.loadAgentForUser(w, r, id)
+	if !ok {
+		return
+	}
+
+	bindings, err := h.Queries.ListAgentMCPBindings(r.Context(), agent.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list agent MCP bindings")
+		return
+	}
+
+	resp := make([]AgentMCPBindingResponse, len(bindings))
+	for i, b := range bindings {
+		resp[i] = bindingToResponse(b)
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (h *Handler) ReplaceAgentMCPBindings(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	agent, ok := h.loadAgentForUser(w, r, id)
+	if !ok {
+		return
+	}
+	if !h.canManageAgent(w, r, agent) {
+		return
+	}
+
+	var req ReplaceAgentMCPBindingsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	workspaceID := resolveWorkspaceID(r)
+
+	// Verify all MCP server IDs exist in the workspace.
+	for _, serverID := range req.MCPServerIDs {
+		_, err := h.Queries.GetMCPServerInWorkspace(r.Context(), db.GetMCPServerInWorkspaceParams{
+			ID:          parseUUID(serverID),
+			WorkspaceID: parseUUID(workspaceID),
+		})
+		if err != nil {
+			writeError(w, http.StatusBadRequest, fmt.Sprintf("MCP server %s not found in workspace", serverID))
+			return
+		}
+	}
+
+	tx, err := h.TxStarter.Begin(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to start transaction")
+		return
+	}
+	defer tx.Rollback(r.Context())
+
+	qtx := h.Queries.WithTx(tx)
+
+	if err := qtx.DeleteAgentMCPBindings(r.Context(), agent.ID); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to clear agent MCP bindings")
+		return
+	}
+
+	for i, serverID := range req.MCPServerIDs {
+		_, err := qtx.CreateAgentMCPBinding(r.Context(), db.CreateAgentMCPBindingParams{
+			AgentID:     agent.ID,
+			McpServerID: parseUUID(serverID),
+			Enabled:     true,
+			SortOrder:   int32(i),
+		})
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to create agent MCP binding: "+err.Error())
+			return
+		}
+	}
+
+	if err := tx.Commit(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to commit")
+		return
+	}
+
+	// Return the updated bindings list.
+	bindings, err := h.Queries.ListAgentMCPBindings(r.Context(), agent.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list agent MCP bindings")
+		return
+	}
+
+	resp := make([]AgentMCPBindingResponse, len(bindings))
+	for i, b := range bindings {
+		resp[i] = bindingToResponse(b)
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
