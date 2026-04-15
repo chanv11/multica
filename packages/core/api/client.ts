@@ -63,6 +63,11 @@ import type {
   ListAutopilotsResponse,
   GetAutopilotResponse,
   ListAutopilotRunsResponse,
+  MCPServer,
+  CreateMCPServerRequest,
+  UpdateMCPServerRequest,
+  AgentMCPBinding,
+  ReplaceAgentMCPBindingsRequest,
 } from "../types";
 import { type Logger, noopLogger } from "../logger";
 import { createRequestId } from "../utils";
@@ -886,5 +891,44 @@ export class ApiClient {
 
   async deleteAutopilotTrigger(autopilotId: string, triggerId: string): Promise<void> {
     await this.fetch(`/api/autopilots/${autopilotId}/triggers/${triggerId}`, { method: "DELETE" });
+  }
+
+  // MCP Servers
+  async listMCPServers(): Promise<MCPServer[]> {
+    return this.fetch("/api/mcp-servers");
+  }
+
+  async getMCPServer(id: string): Promise<MCPServer> {
+    return this.fetch(`/api/mcp-servers/${id}`);
+  }
+
+  async createMCPServer(data: CreateMCPServerRequest): Promise<MCPServer> {
+    return this.fetch("/api/mcp-servers", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateMCPServer(id: string, data: UpdateMCPServerRequest): Promise<MCPServer> {
+    return this.fetch(`/api/mcp-servers/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteMCPServer(id: string): Promise<void> {
+    await this.fetch(`/api/mcp-servers/${id}`, { method: "DELETE" });
+  }
+
+  // Agent MCP Bindings
+  async getAgentMCPBindings(agentId: string): Promise<AgentMCPBinding[]> {
+    return this.fetch(`/api/agents/${agentId}/mcp-bindings`);
+  }
+
+  async replaceAgentMCPBindings(agentId: string, data: ReplaceAgentMCPBindingsRequest): Promise<AgentMCPBinding[]> {
+    return this.fetch(`/api/agents/${agentId}/mcp-bindings`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
   }
 }

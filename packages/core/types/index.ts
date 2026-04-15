@@ -23,7 +23,15 @@ export type {
   IssueUsageSummary,
   AgentRuntimeConfig,
 } from "./agent";
-export type { MCPServerConfig, MCPServersConfig } from "./mcp";
+export type {
+  MCPServerConfig,
+  MCPServersConfig,
+  MCPServer,
+  CreateMCPServerRequest,
+  UpdateMCPServerRequest,
+  AgentMCPBinding,
+  ReplaceAgentMCPBindingsRequest,
+} from "./mcp";
 export type { Workspace, WorkspaceRepo, Member, MemberRole, User, MemberWithUser, Invitation } from "./workspace";
 export type { InboxItem, InboxSeverity, InboxItemType } from "./inbox";
 export type { Comment, CommentType, CommentAuthorType, Reaction } from "./comment";
