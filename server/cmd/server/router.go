@@ -302,6 +302,15 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 				})
 			})
 
+			// MCP Servers
+			r.Route("/api/mcp-servers", func(r chi.Router) {
+				r.Get("/", h.ListMCPServers)
+				r.Post("/", h.CreateMCPServer)
+				r.Get("/{id}", h.GetMCPServer)
+				r.Put("/{id}", h.UpdateMCPServer)
+				r.Delete("/{id}", h.DeleteMCPServer)
+			})
+
 			// Skills
 			r.Route("/api/skills", func(r chi.Router) {
 				r.Get("/", h.ListSkills)
