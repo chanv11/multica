@@ -116,7 +116,7 @@ type TaskAgentData struct {
 	Instructions string                   `json:"instructions"`
 	Skills       []service.AgentSkillData `json:"skills,omitempty"`
 	CustomEnv    map[string]string        `json:"custom_env,omitempty"`
-	MCPServers   any                      `json:"mcp_servers,omitempty"` // from agent.runtime_config.mcp_servers
+	MCPServers   any                      `json:"mcp_servers,omitempty"` // aggregated from agent_mcp_binding via buildMCPConfigFromBindings
 }
 
 func taskToResponse(t db.AgentTaskQueue) AgentTaskResponse {

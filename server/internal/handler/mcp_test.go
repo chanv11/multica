@@ -1112,10 +1112,95 @@ func TestBuildMCPConfigFromBindings_MissingVar(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for missing var, got nil")
 	}
-	if !containsSub(err.Error(), "Missing Var Server") {
-		t.Errorf("error should mention MCP server name, got: %s", err.Error())
+	errMsg := err.Error()
+	if !containsSub(errMsg, "agent "+agentID) {
+		t.Errorf("error should mention agent ID, got: %s", errMsg)
 	}
-	if !containsSub(err.Error(), "MISSING_CMD") {
-		t.Errorf("error should mention the missing var, got: %s", err.Error())
+	if !containsSub(errMsg, "Missing Var Server") {
+		t.Errorf("error should mention MCP server name, got: %s", errMsg)
+	}
+	if !containsSub(errMsg, "MISSING_CMD") {
+		t.Errorf("error should mention the missing var, got: %s", errMsg)
+	}
+}
+
+func TestBuildMCPConfigFromBindings_MultipleBoundMCPsMerge(t *testing.T) {
+	agentID := helperAgentID(t)
+	ctx := context.Background()
+
+	// Create two MCP servers with distinct configs.
+	server1ID := helperCreateMCPServer(t, "Merge Server Alpha")
+	server2ID := helperCreateMCPServer(t, "Merge Server Beta")
+	defer func() {
+		helperDeleteMCPServer(t, server1ID)
+		helperDeleteMCPServer(t, server2ID)
+	}()
+
+	// Give each server a unique config with a placeholder.
+	_, err := testPool.Exec(ctx, `
+		UPDATE workspace_mcp_server SET config = $1 WHERE id = $2
+	`, `{"command":"${CMD_A}","args":["alpha"]}`, server1ID)
+	if err != nil {
+		t.Fatalf("failed to update MCP config for server1: %v", err)
+	}
+	_, err = testPool.Exec(ctx, `
+		UPDATE workspace_mcp_server SET config = $1 WHERE id = $2
+	`, `{"command":"${CMD_B}","args":["beta"]}`, server2ID)
+	if err != nil {
+		t.Fatalf("failed to update MCP config for server2: %v", err)
+	}
+
+	// Bind both servers to the agent.
+	for i, sid := range []string{server1ID, server2ID} {
+		_, err = testPool.Exec(ctx, `
+			INSERT INTO agent_mcp_binding (agent_id, mcp_server_id, enabled, sort_order)
+			VALUES ($1, $2, true, $3)
+			ON CONFLICT DO NOTHING
+		`, agentID, sid, i)
+		if err != nil {
+			t.Fatalf("failed to create binding for server %s: %v", sid, err)
+		}
+	}
+	defer func() {
+		testPool.Exec(ctx, `DELETE FROM agent_mcp_binding WHERE agent_id = $1`, agentID)
+	}()
+
+	env := map[string]string{
+		"CMD_A": "/usr/bin/alpha",
+		"CMD_B": "/usr/bin/beta",
+	}
+	result, err := testHandler.buildMCPConfigFromBindings(ctx, parseUUID(agentID), env)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	resultMap, ok := result.(map[string]any)
+	if !ok {
+		t.Fatalf("expected map[string]any, got %T", result)
+	}
+	servers, ok := resultMap["mcpServers"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected mcpServers map, got %T", resultMap["mcpServers"])
+	}
+	if len(servers) != 2 {
+		t.Fatalf("expected 2 servers, got %d", len(servers))
+	}
+
+	// Verify Merge Server Alpha
+	alpha, ok := servers["Merge Server Alpha"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected Merge Server Alpha config map, got %T", servers["Merge Server Alpha"])
+	}
+	if alpha["command"] != "/usr/bin/alpha" {
+		t.Errorf("expected alpha command '/usr/bin/alpha', got %v", alpha["command"])
+	}
+
+	// Verify Merge Server Beta
+	beta, ok := servers["Merge Server Beta"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected Merge Server Beta config map, got %T", servers["Merge Server Beta"])
+	}
+	if beta["command"] != "/usr/bin/beta" {
+		t.Errorf("expected beta command '/usr/bin/beta', got %v", beta["command"])
 	}
 }

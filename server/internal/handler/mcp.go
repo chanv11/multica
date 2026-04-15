@@ -407,20 +407,22 @@ func (h *Handler) buildMCPConfigFromBindings(ctx context.Context, agentID pgtype
 		return nil, nil
 	}
 
+	agentIDStr := uuidToString(agentID)
 	mcpServers := make(map[string]any, len(servers))
 	for _, srv := range servers {
 		resolved, resolveErr := handlerResolveMCPVars(srv.Config, env)
 		if resolveErr != nil {
 			slog.Warn("MCP config has unresolved variables",
+				"agent_id", agentIDStr,
 				"mcp_name", srv.Name,
 				"error", resolveErr,
 			)
-			return nil, fmt.Errorf("MCP server %q: %w", srv.Name, resolveErr)
+			return nil, fmt.Errorf("agent %s: MCP server %q: %w", agentIDStr, srv.Name, resolveErr)
 		}
 
 		var configObj any
 		if err := json.Unmarshal(resolved, &configObj); err != nil {
-			return nil, fmt.Errorf("MCP server %q: invalid JSON config: %w", srv.Name, err)
+			return nil, fmt.Errorf("agent %s: MCP server %q: invalid JSON config: %w", agentIDStr, srv.Name, err)
 		}
 		mcpServers[srv.Name] = configObj
 	}
