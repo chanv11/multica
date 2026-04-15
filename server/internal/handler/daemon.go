@@ -396,10 +396,10 @@ func (h *Handler) ClaimTaskByRuntime(w http.ResponseWriter, r *http.Request) {
 		var mcpServers any
 		if agent.RuntimeConfig != nil {
 			var rc map[string]any
-			if err := json.Unmarshal(agent.RuntimeConfig, &rc); err == nil {
-				if ms, ok := rc["mcp_servers"]; ok {
-					mcpServers = ms
-				}
+			if err := json.Unmarshal(agent.RuntimeConfig, &rc); err != nil {
+				slog.Warn("failed to unmarshal agent runtime_config", "agent_id", uuidToString(agent.ID), "error", err)
+			} else if ms, ok := rc["mcp_servers"]; ok {
+				mcpServers = ms
 			}
 		}
 		resp.Agent = &TaskAgentData{

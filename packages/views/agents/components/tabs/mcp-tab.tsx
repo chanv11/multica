@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Save, Plus, Trash2, Loader2 } from "lucide-react";
 import type { Agent, MCPServerConfig, MCPServersConfig } from "@multica/core/types";
 import { Button } from "@multica/ui/components/ui/button";
@@ -14,7 +14,7 @@ interface MCPServerEntry {
   name: string;
   command: string;
   args: string; // raw string, parsed to string[] on save
-  envEntries: { key: string; value: string }[];
+  envEntries: { id: number; key: string; value: string }[];
 }
 
 let nextId = 0;
@@ -27,7 +27,7 @@ function serversToEntries(servers: MCPServersConfig | undefined): MCPServerEntry
     command: config.command ?? "",
     args: (config.args ?? []).join(" "),
     envEntries: config.env
-      ? Object.entries(config.env).map(([key, value]) => ({ key, value }))
+      ? Object.entries(config.env).map(([key, value]) => ({ id: nextId++, key, value }))
       : [],
   }));
 }
@@ -68,10 +68,7 @@ export function MCPTab({
   const dirty =
     JSON.stringify(currentServers) !== JSON.stringify(originalServers);
 
-  useEffect(() => {
-    setEntries(serversToEntries(agent.runtime_config?.mcp_servers));
-  }, [agent.runtime_config?.mcp_servers]);
-
+  
   const handleSave = async () => {
     // Validate: no duplicate names, no empty names for entries with command
     const names = entries.filter((e) => e.name.trim()).map((e) => e.name.trim());
@@ -116,7 +113,7 @@ export function MCPTab({
 
   const updateEntry = (
     index: number,
-    field: keyof MCPServerEntry,
+    field: "name" | "command" | "args",
     value: string,
   ) => {
     setEntries(
@@ -128,7 +125,7 @@ export function MCPTab({
     setEntries(
       entries.map((e, i) =>
         i === serverIndex
-          ? { ...e, envEntries: [...e.envEntries, { key: "", value: "" }] }
+          ? { ...e, envEntries: [...e.envEntries, { id: nextId++, key: "", value: "" }] }
           : e,
       ),
     );
@@ -220,7 +217,7 @@ export function MCPTab({
                 {entry.envEntries.length > 0 && (
                   <div className="space-y-1.5 pl-2 border-l-2 border-muted">
                     {entry.envEntries.map((env, envIndex) => (
-                      <div key={envIndex} className="flex items-center gap-2">
+                      <div key={env.id} className="flex items-center gap-2">
                         <Input
                           value={env.key}
                           onChange={(e) =>

@@ -237,12 +237,14 @@ func (env *Environment) Cleanup(removeAll bool) error {
 // writeMCPConfig writes a .mcp.json file into the workdir if MCP servers are configured.
 // The file is passed to Claude Code via --mcp-config.
 func writeMCPConfig(workDir string, mcpServers any) error {
+	mcpPath := filepath.Join(workDir, ".mcp.json")
 	if mcpServers == nil {
+		os.Remove(mcpPath) // best-effort cleanup of stale config
 		return nil
 	}
 	data, err := json.Marshal(mcpServers)
 	if err != nil {
 		return fmt.Errorf("marshal mcp config: %w", err)
 	}
-	return os.WriteFile(filepath.Join(workDir, ".mcp.json"), data, 0o644)
+	return os.WriteFile(mcpPath, data, 0o644)
 }
