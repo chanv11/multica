@@ -157,6 +157,32 @@ func (q *Queries) GetMCPServer(ctx context.Context, id pgtype.UUID) (WorkspaceMc
 	return i, err
 }
 
+const getMCPServerInWorkspace = `-- name: GetMCPServerInWorkspace :one
+SELECT id, workspace_id, name, description, config, created_by, created_at, updated_at FROM workspace_mcp_server WHERE id = $1 AND workspace_id = $2
+`
+
+type GetMCPServerInWorkspaceParams struct {
+	ID          pgtype.UUID `json:"id"`
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+}
+
+// Get a single MCP server by ID scoped to workspace (authorization check)
+func (q *Queries) GetMCPServerInWorkspace(ctx context.Context, arg GetMCPServerInWorkspaceParams) (WorkspaceMcpServer, error) {
+	row := q.db.QueryRow(ctx, getMCPServerInWorkspace, arg.ID, arg.WorkspaceID)
+	var i WorkspaceMcpServer
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Name,
+		&i.Description,
+		&i.Config,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const listAgentMCPBindings = `-- name: ListAgentMCPBindings :many
 
 SELECT agent_id, mcp_server_id, enabled, sort_order, created_at FROM agent_mcp_binding WHERE agent_id = $1 ORDER BY sort_order
@@ -228,28 +254,28 @@ func (q *Queries) ListMCPServers(ctx context.Context, workspaceID pgtype.UUID) (
 
 const updateMCPServer = `-- name: UpdateMCPServer :one
 UPDATE workspace_mcp_server
-SET name = COALESCE($1, name),
-    description = COALESCE($2, description),
-    config = COALESCE($3, config),
+SET name = COALESCE($2, name),
+    description = COALESCE($3, description),
+    config = COALESCE($4, config),
     updated_at = now()
-WHERE id = $4
+WHERE id = $1
 RETURNING id, workspace_id, name, description, config, created_by, created_at, updated_at
 `
 
 type UpdateMCPServerParams struct {
+	ID          pgtype.UUID `json:"id"`
 	Name        pgtype.Text `json:"name"`
 	Description pgtype.Text `json:"description"`
 	Config      []byte      `json:"config"`
-	ID          pgtype.UUID `json:"id"`
 }
 
 // Update an MCP server
 func (q *Queries) UpdateMCPServer(ctx context.Context, arg UpdateMCPServerParams) (WorkspaceMcpServer, error) {
 	row := q.db.QueryRow(ctx, updateMCPServer,
+		arg.ID,
 		arg.Name,
 		arg.Description,
 		arg.Config,
-		arg.ID,
 	)
 	var i WorkspaceMcpServer
 	err := row.Scan(

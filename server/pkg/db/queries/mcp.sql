@@ -8,6 +8,10 @@ SELECT * FROM workspace_mcp_server WHERE workspace_id = $1 ORDER BY name;
 -- name: GetMCPServer :one
 SELECT * FROM workspace_mcp_server WHERE id = $1;
 
+-- Get a single MCP server by ID scoped to workspace (authorization check)
+-- name: GetMCPServerInWorkspace :one
+SELECT * FROM workspace_mcp_server WHERE id = $1 AND workspace_id = $2;
+
 -- Create a new MCP server
 -- name: CreateMCPServer :one
 INSERT INTO workspace_mcp_server (workspace_id, name, description, config, created_by)
@@ -21,7 +25,7 @@ SET name = COALESCE(sqlc.narg('name'), name),
     description = COALESCE(sqlc.narg('description'), description),
     config = COALESCE(sqlc.narg('config'), config),
     updated_at = now()
-WHERE id = sqlc.arg('id')
+WHERE id = $1
 RETURNING *;
 
 -- Delete an MCP server
