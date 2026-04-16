@@ -9,6 +9,7 @@ import {
   Save,
   AlertCircle,
   Download,
+  FolderUp,
 } from "lucide-react";
 import type { Skill, CreateSkillRequest, UpdateSkillRequest } from "@multica/core/types";
 import {
@@ -41,6 +42,7 @@ import { skillListOptions, workspaceKeys } from "@multica/core/workspace/queries
 import { PageHeader } from "../../layout/page-header";
 import { FileTree } from "./file-tree";
 import { FileViewer } from "./file-viewer";
+import { UploadTab } from "./upload-tab";
 
 // ---------------------------------------------------------------------------
 // Create Skill Dialog
@@ -55,7 +57,7 @@ function CreateSkillDialog({
   onCreate: (data: CreateSkillRequest) => Promise<void>;
   onImport: (url: string) => Promise<void>;
 }) {
-  const [tab, setTab] = useState<"create" | "import">("create");
+  const [tab, setTab] = useState<"create" | "import" | "upload">("create");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [importUrl, setImportUrl] = useState("");
@@ -103,7 +105,7 @@ function CreateSkillDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs value={tab} onValueChange={(v) => setTab(v as "create" | "import")}>
+        <Tabs value={tab} onValueChange={(v) => setTab(v as "create" | "import" | "upload")}>
           <TabsList className="w-full">
             <TabsTrigger value="create" className="flex-1">
               <Plus className="mr-1.5 h-3 w-3" />
@@ -112,6 +114,10 @@ function CreateSkillDialog({
             <TabsTrigger value="import" className="flex-1">
               <Download className="mr-1.5 h-3 w-3" />
               Import
+            </TabsTrigger>
+            <TabsTrigger value="upload" className="flex-1">
+              <FolderUp className="mr-1.5 h-3 w-3" />
+              Upload
             </TabsTrigger>
           </TabsList>
 
@@ -188,8 +194,12 @@ function CreateSkillDialog({
               </div>
             )}
           </TabsContent>
+          <TabsContent value="upload" className="mt-0">
+            <UploadTab onCreate={onCreate} onCancel={onClose} />
+          </TabsContent>
         </Tabs>
 
+        {tab !== "upload" && (
         <DialogFooter>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
           {tab === "create" ? (
@@ -213,6 +223,7 @@ function CreateSkillDialog({
             </Button>
           )}
         </DialogFooter>
+        )}
       </DialogContent>
     </Dialog>
   );
