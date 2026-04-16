@@ -194,8 +194,11 @@ function CreateSkillDialog({
               </div>
             )}
           </TabsContent>
-          <TabsContent value="upload" className="mt-0">
-            <UploadTab onCreate={onCreate} onCancel={onClose} />
+          <TabsContent value="upload" className="space-y-4 mt-4 min-h-[180px]">
+            <UploadTab
+              onCreate={async (data) => { await onCreate(data); onClose(); }}
+              onCancel={onClose}
+            />
           </TabsContent>
         </Tabs>
 

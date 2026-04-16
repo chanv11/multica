@@ -19,27 +19,38 @@ vi.mock("@multica/ui/components/ui/label", () => ({
   Label: ({ children, ...props }: any) => <label {...props}>{children}</label>,
 }));
 
+function makeFile(name: string, content: string, relativePath: string, type = "text/plain") {
+  const file = new File([content], name, { type });
+  Object.defineProperty(file, "webkitRelativePath", { value: relativePath, writable: false });
+  return file;
+}
+
+function selectFiles(...files: File[]) {
+  const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+  fireEvent.change(input, { target: { files } });
+}
+
 describe("UploadTab", () => {
   it("renders the upload zone initially", () => {
     render(<UploadTab onCreate={vi.fn()} onCancel={vi.fn()} />);
-    expect(screen.getByText("点击选择文件夹")).toBeInTheDocument();
+    expect(screen.getByText("Click to select folder")).toBeInTheDocument();
   });
 
   it("shows cancel and create buttons", () => {
     render(<UploadTab onCreate={vi.fn()} onCancel={vi.fn()} />);
-    expect(screen.getByText("取消")).toBeInTheDocument();
-    expect(screen.getByText("创建 Skill")).toBeInTheDocument();
+    expect(screen.getByText("Cancel")).toBeInTheDocument();
+    expect(screen.getByText("Create Skill")).toBeInTheDocument();
   });
 
   it("create button is disabled before folder selection", () => {
     render(<UploadTab onCreate={vi.fn()} onCancel={vi.fn()} />);
-    expect(screen.getByText("创建 Skill")).toBeDisabled();
+    expect(screen.getByText("Create Skill")).toBeDisabled();
   });
 
   it("calls onCancel when cancel is clicked", () => {
     const onCancel = vi.fn();
     render(<UploadTab onCreate={vi.fn()} onCancel={onCancel} />);
-    fireEvent.click(screen.getByText("取消"));
+    fireEvent.click(screen.getByText("Cancel"));
     expect(onCancel).toHaveBeenCalledOnce();
   });
 
@@ -47,21 +58,11 @@ describe("UploadTab", () => {
     const onCreate = vi.fn();
     render(<UploadTab onCreate={onCreate} onCancel={vi.fn()} />);
 
-    const file = new File(["hello"], "readme.txt", {
-      type: "text/plain",
-    });
-    Object.defineProperty(file, "webkitRelativePath", {
-      value: "my-skill/readme.txt",
-      writable: false,
-    });
-
-    const input = document.querySelector('input[type="file"]')!;
-    fireEvent.change(input, { target: { files: [file] } });
+    const file = makeFile("readme.txt", "hello", "my-skill/readme.txt");
+    selectFiles(file);
 
     await waitFor(() => {
-      expect(
-        screen.getByText(/文件夹中未找到 SKILL.md/),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/No SKILL.md found/)).toBeInTheDocument();
     });
     expect(onCreate).not.toHaveBeenCalled();
   });
@@ -70,30 +71,15 @@ describe("UploadTab", () => {
     const onCreate = vi.fn().mockResolvedValue(undefined);
     render(<UploadTab onCreate={onCreate} onCancel={vi.fn()} />);
 
-    const skillMd = new File(["# My Skill\n\nDoes things."], "SKILL.md", {
-      type: "text/markdown",
-    });
-    Object.defineProperty(skillMd, "webkitRelativePath", {
-      value: "my-skill/SKILL.md",
-      writable: false,
-    });
-
-    const helper = new File(["export const x = 1;"], "helper.ts", {
-      type: "text/typescript",
-    });
-    Object.defineProperty(helper, "webkitRelativePath", {
-      value: "my-skill/src/helper.ts",
-      writable: false,
-    });
-
-    const input = document.querySelector('input[type="file"]')!;
-    fireEvent.change(input, { target: { files: [skillMd, helper] } });
+    const skillMd = makeFile("SKILL.md", "# My Skill\n\nDoes things.", "my-skill/SKILL.md", "text/markdown");
+    const helper = makeFile("helper.ts", "export const x = 1;", "my-skill/src/helper.ts", "text/typescript");
+    selectFiles(skillMd, helper);
 
     await waitFor(() => {
-      expect(screen.getByText("创建 Skill")).toBeEnabled();
+      expect(screen.getByText("Create Skill")).toBeEnabled();
     });
 
-    fireEvent.click(screen.getByText("创建 Skill"));
+    fireEvent.click(screen.getByText("Create Skill"));
 
     await waitFor(() => {
       expect(onCreate).toHaveBeenCalledOnce();
@@ -107,25 +93,11 @@ describe("UploadTab", () => {
   });
 
   it("allows removing files from the list", async () => {
-    const onCreate = vi.fn().mockResolvedValue(undefined);
-    render(<UploadTab onCreate={onCreate} onCancel={vi.fn()} />);
+    render(<UploadTab onCreate={vi.fn().mockResolvedValue(undefined)} onCancel={vi.fn()} />);
 
-    const skillMd = new File(["skill content"], "SKILL.md", {
-      type: "text/markdown",
-    });
-    Object.defineProperty(skillMd, "webkitRelativePath", {
-      value: "my-skill/SKILL.md",
-      writable: false,
-    });
-
-    const extra = new File(["extra"], "extra.txt", { type: "text/plain" });
-    Object.defineProperty(extra, "webkitRelativePath", {
-      value: "my-skill/extra.txt",
-      writable: false,
-    });
-
-    const input = document.querySelector('input[type="file"]')!;
-    fireEvent.change(input, { target: { files: [skillMd, extra] } });
+    const skillMd = makeFile("SKILL.md", "skill content", "my-skill/SKILL.md", "text/markdown");
+    const extra = makeFile("extra.txt", "extra", "my-skill/extra.txt");
+    selectFiles(skillMd, extra);
 
     await waitFor(() => {
       expect(screen.getByText("extra.txt")).toBeInTheDocument();
@@ -137,5 +109,67 @@ describe("UploadTab", () => {
     fireEvent.click(removeBtn);
 
     expect(screen.queryByText("extra.txt")).not.toBeInTheDocument();
+  });
+
+  it("shows skipped count for binary files", async () => {
+    render(<UploadTab onCreate={vi.fn().mockResolvedValue(undefined)} onCancel={vi.fn()} />);
+
+    const skillMd = makeFile("SKILL.md", "content", "my-skill/SKILL.md", "text/markdown");
+    const png = makeFile("image.png", "binary", "my-skill/image.png", "image/png");
+    selectFiles(skillMd, png);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Skipped 1 non-text file/)).toBeInTheDocument();
+    });
+  });
+
+  it("shows error for empty folder with no text files", async () => {
+    render(<UploadTab onCreate={vi.fn()} onCancel={vi.fn()} />);
+
+    const png = makeFile("image.png", "binary", "my-skill/image.png", "image/png");
+    selectFiles(png);
+
+    await waitFor(() => {
+      expect(screen.getByText(/No recognized text files/)).toBeInTheDocument();
+    });
+  });
+
+  it("resets state when reselect is clicked", async () => {
+    render(<UploadTab onCreate={vi.fn().mockResolvedValue(undefined)} onCancel={vi.fn()} />);
+
+    const skillMd = makeFile("SKILL.md", "content", "my-skill/SKILL.md", "text/markdown");
+    selectFiles(skillMd);
+
+    await waitFor(() => {
+      expect(screen.getByText("Reselect")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText("Reselect"));
+
+    expect(screen.getByText("Click to select folder")).toBeInTheDocument();
+    expect(screen.queryByText("Reselect")).not.toBeInTheDocument();
+  });
+
+  it("recovers when onCreate rejects", async () => {
+    const onCreate = vi.fn().mockRejectedValue(new Error("API error"));
+    render(<UploadTab onCreate={onCreate} onCancel={vi.fn()} />);
+
+    const skillMd = makeFile("SKILL.md", "content", "my-skill/SKILL.md", "text/markdown");
+    selectFiles(skillMd);
+
+    await waitFor(() => {
+      expect(screen.getByText("Create Skill")).toBeEnabled();
+    });
+
+    fireEvent.click(screen.getByText("Create Skill"));
+
+    await waitFor(() => {
+      expect(onCreate).toHaveBeenCalledOnce();
+    });
+
+    // Button should be re-enabled after rejection
+    await waitFor(() => {
+      expect(screen.getByText("Create Skill")).toBeEnabled();
+    });
   });
 });

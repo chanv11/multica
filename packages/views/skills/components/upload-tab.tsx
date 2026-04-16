@@ -40,12 +40,12 @@ function isBinaryFile(filename: string): boolean {
 
 interface ParsedFolder {
   name: string;
-  skillContent: string;
+  skillContent: string | undefined;
   files: { path: string; content: string }[];
   skippedCount: number;
 }
 
-function parseFolderFiles(fileList: FileList): Promise<ParsedFolder> {
+async function parseFolderFiles(fileList: FileList): Promise<ParsedFolder> {
   const files = Array.from(fileList);
 
   // Derive folder name from first file's relative path
@@ -58,18 +58,18 @@ function parseFolderFiles(fileList: FileList): Promise<ParsedFolder> {
 
   // Check empty folder
   if (textFiles.length === 0) {
-    throw new Error("文件夹中没有可识别的文本文件");
+    throw new Error("No recognized text files in the folder");
   }
 
   // Check file count
   if (textFiles.length > MAX_FILES) {
-    throw new Error(`文件数量超过 ${MAX_FILES} 个上限（共 ${textFiles.length} 个文本文件）`);
+    throw new Error(`File count exceeds limit of ${MAX_FILES} (found ${textFiles.length} text files)`);
   }
 
   // Check total size
   const totalSize = textFiles.reduce((sum, f) => sum + f.size, 0);
   if (totalSize > MAX_TOTAL_SIZE) {
-    throw new Error(`文件总大小超过 5 MB 上限（共 ${(totalSize / 1024 / 1024).toFixed(1)} MB）`);
+    throw new Error(`Total size exceeds 5 MB limit (${(totalSize / 1024 / 1024).toFixed(1)} MB)`);
   }
 
   // Read all text files
@@ -89,7 +89,7 @@ function parseFolderFiles(fileList: FileList): Promise<ParsedFolder> {
         }),
     ),
   ).then((results) => {
-    let skillContent = "";
+    let skillContent: string | undefined;
     const supportingFiles: { path: string; content: string }[] = [];
     const seenPaths = new Set<string>();
     let readSkipped = 0;
@@ -106,7 +106,9 @@ function parseFolderFiles(fileList: FileList): Promise<ParsedFolder> {
       if (seenPaths.has(relativePath)) continue;
       seenPaths.add(relativePath);
 
-      if (relativePath === "SKILL.md" || relativePath.endsWith("/SKILL.md")) {
+      // Only match root-level SKILL.md — subdirectory SKILL.md files
+      // are treated as regular supporting files
+      if (relativePath === "SKILL.md") {
         skillContent = content;
       } else {
         supportingFiles.push({ path: relativePath, content });
@@ -136,7 +138,7 @@ export function UploadTab({ onCreate, onCancel }: UploadTabProps) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [files, setFiles] = useState<{ path: string; content: string }[]>([]);
-  const [skillContent, setSkillContent] = useState<string | null>(null);
+  const [skillContent, setSkillContent] = useState<string | undefined>(undefined);
   const [skippedCount, setSkippedCount] = useState(0);
   const [reading, setReading] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -156,8 +158,8 @@ export function UploadTab({ onCreate, onCancel }: UploadTabProps) {
 
     parseFolderFiles(fileList)
       .then((result) => {
-        if (!result.skillContent) {
-          setError("文件夹中未找到 SKILL.md 文件，请确保包含 SKILL.md 后重试");
+        if (result.skillContent === undefined) {
+          setError("No SKILL.md found in folder. Please include a SKILL.md file and try again");
           setFolderSelected(false);
           return;
         }
@@ -168,7 +170,7 @@ export function UploadTab({ onCreate, onCancel }: UploadTabProps) {
         setFolderSelected(true);
       })
       .catch((err) => {
-        setError(err instanceof Error ? err.message : "读取文件夹失败");
+        setError(err instanceof Error ? err.message : "Failed to read folder");
         setFolderSelected(false);
       })
       .finally(() => {
@@ -183,7 +185,7 @@ export function UploadTab({ onCreate, onCancel }: UploadTabProps) {
   };
 
   const handleCreate = async () => {
-    if (skillContent === null) return;
+    if (skillContent === undefined) return;
     setCreating(true);
     try {
       await onCreate({
@@ -193,13 +195,15 @@ export function UploadTab({ onCreate, onCancel }: UploadTabProps) {
         files,
       });
     } catch {
+      // Error handled by parent component; keep dialog open for retry
+    } finally {
       setCreating(false);
     }
   };
 
   return (
     <div className="space-y-4 mt-4 min-h-[180px]">
-      {/* Hidden folder input */}
+      {/* Hidden folder input — webkitdirectory enables folder selection (non-standard but widely supported) */}
       <input
         ref={inputRef}
         type="file"
@@ -219,14 +223,14 @@ export function UploadTab({ onCreate, onCancel }: UploadTabProps) {
           {reading ? (
             <>
               <Upload className="h-6 w-6 animate-pulse" />
-              <span className="text-sm">读取文件中...</span>
+              <span className="text-sm">Reading files...</span>
             </>
           ) : (
             <>
               <FolderOpen className="h-6 w-6" />
-              <span className="text-sm font-medium">点击选择文件夹</span>
+              <span className="text-sm font-medium">Click to select folder</span>
               <span className="text-xs">
-                需包含 SKILL.md，支持 .md .ts .py .json 等文本文件
+                Must contain SKILL.md. Supports .md .ts .py .json and other text files
               </span>
             </>
           )}
@@ -236,7 +240,7 @@ export function UploadTab({ onCreate, onCancel }: UploadTabProps) {
         <>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label className="text-xs text-muted-foreground">名称</Label>
+              <Label className="text-xs text-muted-foreground">Name</Label>
               <Input
                 type="text"
                 value={name}
@@ -245,13 +249,13 @@ export function UploadTab({ onCreate, onCancel }: UploadTabProps) {
               />
             </div>
             <div>
-              <Label className="text-xs text-muted-foreground">描述</Label>
+              <Label className="text-xs text-muted-foreground">Description</Label>
               <Input
                 type="text"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 className="mt-1"
-                placeholder="可选"
+                placeholder="Optional"
               />
             </div>
           </div>
@@ -259,14 +263,14 @@ export function UploadTab({ onCreate, onCancel }: UploadTabProps) {
           {skippedCount > 0 && (
             <div className="flex items-center gap-2 rounded-md bg-yellow-500/10 px-3 py-1.5 text-xs text-yellow-600">
               <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-              已跳过 {skippedCount} 个非文本文件
+              Skipped {skippedCount} non-text file{skippedCount !== 1 ? "s" : ""}
             </div>
           )}
 
           <div>
             <div className="flex items-center justify-between mb-2">
               <Label className="text-xs text-muted-foreground">
-                文件列表 ({files.length + 1} 个文件)
+                Files ({files.length + 1} file{files.length + 1 !== 1 ? "s" : ""})
               </Label>
               <Button
                 variant="ghost"
@@ -276,19 +280,19 @@ export function UploadTab({ onCreate, onCancel }: UploadTabProps) {
                   setName("");
                   setDescription("");
                   setFiles([]);
-                  setSkillContent(null);
+                  setSkillContent(undefined);
                   setSkippedCount(0);
                   setError(null);
                 }}
               >
-                重新选择
+                Reselect
               </Button>
             </div>
             <div className="max-h-40 overflow-y-auto rounded-lg border">
               {/* SKILL.md always first */}
               <div className="flex items-center gap-2 px-3 py-1.5 text-xs border-b last:border-b-0">
                 <span className="font-mono truncate flex-1">SKILL.md</span>
-                <span className="text-muted-foreground text-[11px]">主文件</span>
+                <span className="text-muted-foreground text-[11px]">Main file</span>
               </div>
               {files.map((f) => (
                 <div
@@ -321,13 +325,13 @@ export function UploadTab({ onCreate, onCancel }: UploadTabProps) {
       {/* Footer buttons */}
       <div className="flex justify-end gap-2 pt-2">
         <Button variant="ghost" onClick={onCancel}>
-          取消
+          Cancel
         </Button>
         <Button
           onClick={handleCreate}
-          disabled={creating || !folderSelected || skillContent === null || !name.trim()}
+          disabled={creating || !folderSelected || skillContent === undefined || !name.trim()}
         >
-          {creating ? "创建中..." : "创建 Skill"}
+          {creating ? "Creating..." : "Create Skill"}
         </Button>
       </div>
     </div>
