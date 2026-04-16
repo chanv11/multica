@@ -38,6 +38,7 @@ type Agent struct {
 	ArchivedAt         pgtype.Timestamptz `json:"archived_at"`
 	ArchivedBy         pgtype.UUID        `json:"archived_by"`
 	CustomEnv          []byte             `json:"custom_env"`
+	CustomArgs         []byte             `json:"custom_args"`
 }
 
 type AgentRuntime struct {
@@ -108,7 +109,6 @@ type Autopilot struct {
 	Status             string             `json:"status"`
 	ExecutionMode      string             `json:"execution_mode"`
 	IssueTitleTemplate pgtype.Text        `json:"issue_title_template"`
-	ConcurrencyPolicy  string             `json:"concurrency_policy"`
 	CreatedByType      string             `json:"created_by_type"`
 	CreatedByID        pgtype.UUID        `json:"created_by_id"`
 	LastRunAt          pgtype.Timestamptz `json:"last_run_at"`
@@ -334,20 +334,6 @@ type Project struct {
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 	Priority    string             `json:"priority"`
-}
-
-type RuntimeUsage struct {
-	ID               pgtype.UUID        `json:"id"`
-	RuntimeID        pgtype.UUID        `json:"runtime_id"`
-	Date             pgtype.Date        `json:"date"`
-	Provider         string             `json:"provider"`
-	Model            string             `json:"model"`
-	InputTokens      int64              `json:"input_tokens"`
-	OutputTokens     int64              `json:"output_tokens"`
-	CacheReadTokens  int64              `json:"cache_read_tokens"`
-	CacheWriteTokens int64              `json:"cache_write_tokens"`
-	CreatedAt        pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
 }
 
 type Skill struct {

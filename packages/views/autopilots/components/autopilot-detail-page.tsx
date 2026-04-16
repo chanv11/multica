@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Zap, Play, Pause, Clock, Plus, Trash2, CheckCircle2, XCircle, SkipForward, Loader2, Pencil } from "lucide-react";
+import { Zap, Play, Pause, Clock, Plus, Trash2, CheckCircle2, XCircle, Loader2, Pencil } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { autopilotDetailOptions, autopilotRunsOptions } from "@multica/core/autopilots/queries";
 import {
@@ -13,8 +13,10 @@ import {
 } from "@multica/core/autopilots/mutations";
 import { agentListOptions } from "@multica/core/workspace/queries";
 import { useWorkspaceId } from "@multica/core/hooks";
+import { useWorkspacePaths } from "@multica/core/paths";
 import { useActorName } from "@multica/core/workspace/hooks";
 import { useNavigation, AppLink } from "../../navigation";
+import { PageHeader } from "../../layout/page-header";
 import { ActorAvatar } from "../../common/actor-avatar";
 import { Skeleton } from "@multica/ui/components/ui/skeleton";
 import { Button } from "@multica/ui/components/ui/button";
@@ -50,28 +52,25 @@ function formatDate(date: string): string {
 }
 
 const RUN_STATUS_CONFIG: Record<string, { label: string; color: string; icon: typeof CheckCircle2 }> = {
-  pending: { label: "Pending", color: "text-blue-500", icon: Clock },
   issue_created: { label: "Issue Created", color: "text-blue-500", icon: Clock },
   running: { label: "Running", color: "text-blue-500", icon: Loader2 },
   completed: { label: "Completed", color: "text-emerald-500", icon: CheckCircle2 },
   failed: { label: "Failed", color: "text-destructive", icon: XCircle },
-  skipped: { label: "Skipped", color: "text-muted-foreground", icon: SkipForward },
 };
 
 function RunRow({ run }: { run: AutopilotRun }) {
-  const cfg = (RUN_STATUS_CONFIG[run.status] ?? RUN_STATUS_CONFIG["pending"])!;
+  const wsPaths = useWorkspacePaths();
+  const cfg = (RUN_STATUS_CONFIG[run.status] ?? RUN_STATUS_CONFIG["issue_created"])!;
   const StatusIcon = cfg.icon;
 
-  return (
-    <div className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-accent/30 transition-colors">
+  const content = (
+    <>
       <StatusIcon className={cn("h-4 w-4 shrink-0", cfg.color)} />
       <span className={cn("w-24 shrink-0 text-xs font-medium", cfg.color)}>{cfg.label}</span>
       <span className="w-16 shrink-0 text-xs text-muted-foreground capitalize">{run.source}</span>
       <span className="flex-1 min-w-0 text-xs text-muted-foreground truncate">
         {run.issue_id ? (
-          <AppLink href={`/issues/${run.issue_id}`} className="hover:underline">
-            Issue linked
-          </AppLink>
+          "Issue linked"
         ) : run.failure_reason ? (
           <span className="text-destructive">{run.failure_reason}</span>
         ) : null}
@@ -79,8 +78,20 @@ function RunRow({ run }: { run: AutopilotRun }) {
       <span className="w-32 shrink-0 text-right text-xs text-muted-foreground tabular-nums">
         {formatDate(run.triggered_at || run.created_at)}
       </span>
-    </div>
+    </>
   );
+
+  const rowClass = "flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-accent/30 transition-colors";
+
+  if (run.issue_id) {
+    return (
+      <AppLink href={wsPaths.issueDetail(run.issue_id)} className={cn(rowClass, "cursor-pointer")}>
+        {content}
+      </AppLink>
+    );
+  }
+
+  return <div className={rowClass}>{content}</div>;
 }
 
 function TriggerRow({ trigger, autopilotId }: { trigger: AutopilotTrigger; autopilotId: string }) {
@@ -357,6 +368,7 @@ function AddTriggerDialog({
 
 export function AutopilotDetailPage({ autopilotId }: { autopilotId: string }) {
   const wsId = useWorkspaceId();
+  const wsPaths = useWorkspacePaths();
   const router = useNavigation();
   const { getActorName } = useActorName();
 
@@ -402,7 +414,7 @@ export function AutopilotDetailPage({ autopilotId }: { autopilotId: string }) {
     try {
       await deleteAutopilot.mutateAsync(autopilotId);
       toast.success("Autopilot deleted");
-      router.push("/autopilots");
+      router.push(wsPaths.autopilots());
     } catch {
       toast.error("Failed to delete autopilot");
     }
@@ -416,9 +428,9 @@ export function AutopilotDetailPage({ autopilotId }: { autopilotId: string }) {
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="flex h-12 shrink-0 items-center justify-between border-b px-5">
+      <PageHeader className="justify-between px-5">
         <div className="flex items-center gap-2">
-          <AppLink href="/autopilots" className="text-muted-foreground hover:text-foreground transition-colors">
+          <AppLink href={wsPaths.autopilots()} className="text-muted-foreground hover:text-foreground transition-colors">
             <Zap className="h-4 w-4" />
           </AppLink>
           <span className="text-muted-foreground">/</span>
@@ -449,7 +461,7 @@ export function AutopilotDetailPage({ autopilotId }: { autopilotId: string }) {
             {triggerAutopilot.isPending ? "Running..." : "Run now"}
           </Button>
         </div>
-      </div>
+      </PageHeader>
 
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-4xl mx-auto p-6 space-y-8">
@@ -473,10 +485,6 @@ export function AutopilotDetailPage({ autopilotId }: { autopilotId: string }) {
                 <div className="mt-1">
                   {autopilot.execution_mode === "create_issue" ? "Create Issue" : "Run Only"}
                 </div>
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground">Concurrency</label>
-                <div className="mt-1 capitalize">{autopilot.concurrency_policy}</div>
               </div>
               {autopilot.description && (
                 <div className="col-span-2">

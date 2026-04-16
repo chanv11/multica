@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -14,14 +15,22 @@ import (
 	"github.com/multica-ai/multica/server/internal/cli"
 	"github.com/multica-ai/multica/server/internal/daemon/execenv"
 	"github.com/multica-ai/multica/server/internal/daemon/repocache"
-	"github.com/multica-ai/multica/server/internal/daemon/usage"
 	"github.com/multica-ai/multica/server/pkg/agent"
 )
 
+// ErrRepoNotConfigured is returned by ensureRepoReady when the requested repo
+// URL is not present in the workspace's repo configuration after a fresh
+// server refresh.
+var ErrRepoNotConfigured = errors.New("repo is not configured for this workspace")
+
 // workspaceState tracks registered runtimes for a single workspace.
 type workspaceState struct {
-	workspaceID string
-	runtimeIDs  []string
+	workspaceID     string
+	runtimeIDs      []string
+	reposVersion    string             // stored for future use: skip refresh when version unchanged
+	allowedRepoURLs map[string]struct{}
+	lastRepoSyncErr string
+	repoRefreshMu   sync.Mutex
 }
 
 // Daemon is the local agent runtime that polls for and executes tasks.
@@ -34,11 +43,12 @@ type Daemon struct {
 	mu           sync.Mutex
 	workspaces   map[string]*workspaceState
 	runtimeIndex map[string]Runtime // runtimeID -> Runtime for provider lookups
-	reloading    sync.Mutex         // prevents concurrent reloadWorkspaces
+	reloading    sync.Mutex         // prevents concurrent workspace syncs
 
 	cancelFunc    context.CancelFunc // set by Run(); called by triggerRestart
 	restartBinary string             // non-empty after a successful update; path to the new binary
 	updating      atomic.Bool        // prevents concurrent update attempts
+	activeTasks   atomic.Int64       // number of tasks currently in handleTask; exposed via /health
 }
 
 // New creates a new Daemon instance.
@@ -81,12 +91,14 @@ func (d *Daemon) Run(ctx context.Context) error {
 		return err
 	}
 
-	// Fetch all user workspaces from the API and register runtimes.
+	// Fetch all user workspaces from the API and register runtimes for any
+	// that exist. Zero workspaces is a valid state — a newly-signed-up user
+	// may start the daemon before creating their first workspace. The
+	// workspaceSyncLoop below polls every 30s and will register runtimes
+	// when a workspace appears, so the daemon stays useful as a long-lived
+	// background process rather than crashing at startup.
 	if err := d.syncWorkspacesFromAPI(ctx); err != nil {
 		return err
-	}
-	if len(d.allRuntimeIDs()) == 0 {
-		return fmt.Errorf("no runtimes registered")
 	}
 
 	// Deregister runtimes on shutdown (uses a fresh context since ctx will be cancelled).
@@ -96,7 +108,6 @@ func (d *Daemon) Run(ctx context.Context) error {
 	go d.workspaceSyncLoop(ctx)
 
 	go d.heartbeatLoop(ctx)
-	go d.usageScanLoop(ctx)
 	go d.gcLoop(ctx)
 	go d.serveHealth(ctx, healthLn, time.Now())
 	return d.pollLoop(ctx)
@@ -144,7 +155,6 @@ func (d *Daemon) resolveAuth() error {
 	return nil
 }
 
-
 // allRuntimeIDs returns all runtime IDs across all watched workspaces.
 func (d *Daemon) allRuntimeIDs() []string {
 	d.mu.Lock()
@@ -164,17 +174,6 @@ func (d *Daemon) findRuntime(id string) *Runtime {
 		return &rt
 	}
 	return nil
-}
-
-// providerToRuntimeMap returns a mapping from provider name to runtime ID.
-func (d *Daemon) providerToRuntimeMap() map[string]string {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	m := make(map[string]string)
-	for id, rt := range d.runtimeIndex {
-		m[rt.Provider] = id
-	}
-	return m
 }
 
 func (d *Daemon) registerRuntimesForWorkspace(ctx context.Context, workspaceID string) (*RegisterResponse, error) {
@@ -221,6 +220,133 @@ func (d *Daemon) registerRuntimesForWorkspace(ctx context.Context, workspaceID s
 		return nil, fmt.Errorf("register runtimes: empty response")
 	}
 	return resp, nil
+}
+
+func newWorkspaceState(workspaceID string, runtimeIDs []string, reposVersion string, repos []RepoData) *workspaceState {
+	return &workspaceState{
+		workspaceID:     workspaceID,
+		runtimeIDs:      runtimeIDs,
+		reposVersion:    reposVersion,
+		allowedRepoURLs: repoAllowlist(repos),
+	}
+}
+
+func repoAllowlist(repos []RepoData) map[string]struct{} {
+	allowed := make(map[string]struct{}, len(repos))
+	for _, repo := range repos {
+		if repo.URL == "" {
+			continue
+		}
+		allowed[repo.URL] = struct{}{}
+	}
+	return allowed
+}
+
+func (d *Daemon) setWorkspaceRepoSyncError(workspaceID, syncErr string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if ws, ok := d.workspaces[workspaceID]; ok {
+		ws.lastRepoSyncErr = syncErr
+	}
+}
+
+func (d *Daemon) workspaceRepoAllowed(workspaceID, repoURL string) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	ws, ok := d.workspaces[workspaceID]
+	if !ok {
+		return false
+	}
+	_, allowed := ws.allowedRepoURLs[repoURL]
+	return allowed
+}
+
+func (d *Daemon) workspaceLastRepoSyncErr(workspaceID string) string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	ws, ok := d.workspaces[workspaceID]
+	if !ok {
+		return ""
+	}
+	return ws.lastRepoSyncErr
+}
+
+func (d *Daemon) syncWorkspaceRepos(workspaceID string, repos []RepoData) {
+	if d.repoCache == nil {
+		return
+	}
+	if err := d.repoCache.Sync(workspaceID, repoDataToInfo(repos)); err != nil {
+		d.setWorkspaceRepoSyncError(workspaceID, err.Error())
+		d.logger.Warn("repo cache sync failed", "workspace_id", workspaceID, "error", err)
+		return
+	}
+	d.setWorkspaceRepoSyncError(workspaceID, "")
+}
+
+func (d *Daemon) refreshWorkspaceRepos(ctx context.Context, workspaceID string) (*WorkspaceReposResponse, error) {
+	refreshCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	resp, err := d.client.GetWorkspaceRepos(refreshCtx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+
+	d.mu.Lock()
+	if ws, ok := d.workspaces[workspaceID]; ok {
+		ws.reposVersion = resp.ReposVersion
+		ws.allowedRepoURLs = repoAllowlist(resp.Repos)
+	}
+	d.mu.Unlock()
+
+	return resp, nil
+}
+
+func (d *Daemon) ensureRepoReady(ctx context.Context, workspaceID, repoURL string) error {
+	if d.repoCache == nil {
+		return fmt.Errorf("repo cache not initialized")
+	}
+
+	repoURL = strings.TrimSpace(repoURL)
+
+	d.mu.Lock()
+	ws, ok := d.workspaces[workspaceID]
+	d.mu.Unlock()
+	if !ok {
+		return fmt.Errorf("workspace is not watched by this daemon: %s", workspaceID)
+	}
+
+	if d.workspaceRepoAllowed(workspaceID, repoURL) && d.repoCache.Lookup(workspaceID, repoURL) != "" {
+		return nil
+	}
+
+	ws.repoRefreshMu.Lock()
+	defer ws.repoRefreshMu.Unlock()
+
+	if d.workspaceRepoAllowed(workspaceID, repoURL) && d.repoCache.Lookup(workspaceID, repoURL) != "" {
+		return nil
+	}
+
+	resp, err := d.refreshWorkspaceRepos(ctx, workspaceID)
+	if err != nil {
+		return fmt.Errorf("refresh workspace repos: %w", err)
+	}
+
+	if !d.workspaceRepoAllowed(workspaceID, repoURL) {
+		return ErrRepoNotConfigured
+	}
+
+	d.syncWorkspaceRepos(workspaceID, resp.Repos)
+
+	if d.repoCache.Lookup(workspaceID, repoURL) != "" {
+		return nil
+	}
+
+	if syncErr := d.workspaceLastRepoSyncErr(workspaceID); syncErr != "" {
+		return fmt.Errorf("repo is configured but not synced: %s", syncErr)
+	}
+
+	return fmt.Errorf("repo is configured but not synced")
 }
 
 // workspaceSyncLoop periodically fetches the user's workspaces from the API
@@ -271,7 +397,7 @@ func (d *Daemon) syncWorkspacesFromAPI(ctx context.Context) error {
 	var registered int
 	for id, name := range apiIDs {
 		if currentIDs[id] {
-			continue
+			continue // important: never replace existing workspaceState; ensureRepoReady holds ws.repoRefreshMu from the original pointer
 		}
 		resp, err := d.registerRuntimesForWorkspace(ctx, id)
 		if err != nil {
@@ -284,21 +410,17 @@ func (d *Daemon) syncWorkspacesFromAPI(ctx context.Context) error {
 			d.logger.Info("registered runtime", "workspace_id", id, "runtime_id", rt.ID, "provider", rt.Provider)
 		}
 		d.mu.Lock()
-		d.workspaces[id] = &workspaceState{workspaceID: id, runtimeIDs: runtimeIDs}
+		d.workspaces[id] = newWorkspaceState(id, runtimeIDs, resp.ReposVersion, resp.Repos)
 		for _, rt := range resp.Runtimes {
 			d.runtimeIndex[rt.ID] = rt
 		}
 		d.mu.Unlock()
 
 		if d.repoCache != nil && len(resp.Repos) > 0 {
-			go func(wsID string, repos []RepoData) {
-				if err := d.repoCache.Sync(wsID, repoDataToInfo(repos)); err != nil {
-					d.logger.Warn("repo cache sync failed", "workspace_id", wsID, "error", err)
-				}
-			}(id, resp.Repos)
+			go d.syncWorkspaceRepos(id, resp.Repos)
 		}
 
-		d.logger.Info("watching workspace", "workspace_id", id, "name", name, "runtimes", len(resp.Runtimes))
+		d.logger.Info("watching workspace", "workspace_id", id, "name", name, "runtimes", len(resp.Runtimes), "repos", len(resp.Repos))
 		registered++
 	}
 
@@ -536,62 +658,6 @@ func (d *Daemon) triggerRestart() {
 	}
 }
 
-func (d *Daemon) usageScanLoop(ctx context.Context) {
-	scanner := usage.NewScanner(d.logger)
-
-	report := func() {
-		records := scanner.Scan()
-		if len(records) == 0 {
-			return
-		}
-
-		// Build provider -> runtime ID mapping from current state.
-		providerToRuntime := d.providerToRuntimeMap()
-
-		// Group records by provider to send to the correct runtime.
-		byProvider := make(map[string][]map[string]any)
-		for _, r := range records {
-			byProvider[r.Provider] = append(byProvider[r.Provider], map[string]any{
-				"date":               r.Date,
-				"provider":           r.Provider,
-				"model":              r.Model,
-				"input_tokens":       r.InputTokens,
-				"output_tokens":      r.OutputTokens,
-				"cache_read_tokens":  r.CacheReadTokens,
-				"cache_write_tokens": r.CacheWriteTokens,
-			})
-		}
-
-		for provider, entries := range byProvider {
-			runtimeID, ok := providerToRuntime[provider]
-			if !ok {
-				d.logger.Debug("no runtime for provider, skipping usage report", "provider", provider)
-				continue
-			}
-			if err := d.client.ReportUsage(ctx, runtimeID, entries); err != nil {
-				d.logger.Warn("usage report failed", "provider", provider, "runtime_id", runtimeID, "error", err)
-			} else {
-				d.logger.Info("usage reported", "provider", provider, "runtime_id", runtimeID, "entries", len(entries))
-			}
-		}
-	}
-
-	// Initial scan on startup.
-	report()
-
-	ticker := time.NewTicker(5 * time.Minute)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			report()
-		}
-	}
-}
-
 func (d *Daemon) pollLoop(ctx context.Context) error {
 	sem := make(chan struct{}, d.cfg.MaxConcurrentTasks)
 	var wg sync.WaitGroup
@@ -649,8 +715,10 @@ func (d *Daemon) pollLoop(ctx context.Context) error {
 				}
 				d.logger.Info("task received", "task", shortID(task.ID), "target", taskTarget)
 				wg.Add(1)
+				d.activeTasks.Add(1)
 				go func(t Task) {
 					defer wg.Done()
+					defer d.activeTasks.Add(-1)
 					defer func() { <-sem }()
 					d.handleTask(ctx, t)
 				}(*task)
@@ -913,11 +981,16 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, taskLo
 
 	taskStart := time.Now()
 
+	var customArgs []string
+	if task.Agent != nil {
+		customArgs = task.Agent.CustomArgs
+	}
 	execOpts := agent.ExecOptions{
 		Cwd:             env.WorkDir,
 		Model:           entry.Model,
 		Timeout:         d.cfg.AgentTimeout,
 		ResumeSessionID: task.PriorSessionID,
+		CustomArgs:      customArgs,
 	}
 
 	result, tools, err := d.executeAndDrain(ctx, backend, prompt, execOpts, taskLog, task.ID)

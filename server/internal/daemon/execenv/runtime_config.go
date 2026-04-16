@@ -12,16 +12,19 @@ import (
 //
 // For Claude:   writes {workDir}/CLAUDE.md  (skills discovered natively from .claude/skills/)
 // For Codex:    writes {workDir}/AGENTS.md  (skills discovered natively via CODEX_HOME)
+// For Copilot:  writes {workDir}/AGENTS.md  (Copilot CLI natively reads AGENTS.md)
 // For OpenCode: writes {workDir}/AGENTS.md  (skills discovered natively from .config/opencode/skills/)
 // For OpenClaw: writes {workDir}/AGENTS.md  (skills discovered natively from .openclaw/skills/)
 // For Gemini:   writes {workDir}/GEMINI.md  (discovered natively by the Gemini CLI)
+// For Pi:       writes {workDir}/AGENTS.md  (skills discovered natively from ~/.pi/agent/skills/)
+// For Cursor:   writes {workDir}/AGENTS.md  (skills discovered natively from .cursor/skills/)
 func InjectRuntimeConfig(workDir, provider string, ctx TaskContextForEnv) error {
 	content := buildMetaSkillContent(provider, ctx)
 
 	switch provider {
 	case "claude":
 		return os.WriteFile(filepath.Join(workDir, "CLAUDE.md"), []byte(content), 0o644)
-	case "codex", "opencode", "openclaw":
+	case "codex", "copilot", "opencode", "openclaw", "pi", "cursor":
 		return os.WriteFile(filepath.Join(workDir, "AGENTS.md"), []byte(content), 0o644)
 	case "gemini":
 		return os.WriteFile(filepath.Join(workDir, "GEMINI.md"), []byte(content), 0o644)
@@ -64,7 +67,7 @@ func buildMetaSkillContent(provider string, ctx TaskContextForEnv) string {
 	b.WriteString("**Always use `--output json` for all read commands** to get structured data with full IDs.\n\n")
 	b.WriteString("### Read\n")
 	b.WriteString("- `multica issue get <id> --output json` — Get full issue details (title, description, status, priority, assignee)\n")
-	b.WriteString("- `multica issue list [--status X] [--priority X] [--assignee X] --output json` — List issues in workspace\n")
+	b.WriteString("- `multica issue list [--status X] [--priority X] [--assignee X] [--limit N] [--offset N] --output json` — List issues in workspace (default limit: 50; JSON output includes `total`, `has_more` — use offset to paginate when `has_more` is true)\n")
 	b.WriteString("- `multica issue comment list <issue-id> [--limit N] [--offset N] [--since <RFC3339>] --output json` — List comments on an issue (supports pagination; includes id, parent_id for threading)\n")
 	b.WriteString("- `multica workspace get --output json` — Get workspace details and context\n")
 	b.WriteString("- `multica workspace members [workspace-id] --output json` — List workspace members (user IDs, names, roles)\n")
@@ -140,8 +143,8 @@ func buildMetaSkillContent(provider string, ctx TaskContextForEnv) string {
 		case "claude":
 			// Claude discovers skills natively from .claude/skills/ — just list names.
 			b.WriteString("You have the following skills installed (discovered automatically):\n\n")
-		case "codex", "opencode", "openclaw":
-			// Codex, OpenCode, and OpenClaw discover skills natively from their respective paths — just list names.
+		case "codex", "copilot", "opencode", "openclaw", "pi", "cursor":
+			// Codex, Copilot, OpenCode, OpenClaw, Pi, and Cursor discover skills natively from their respective paths — just list names.
 			b.WriteString("You have the following skills installed (discovered automatically):\n\n")
 		case "gemini":
 			// Gemini reads GEMINI.md directly; point it at the fallback skills dir.
@@ -180,6 +183,7 @@ func buildMetaSkillContent(provider string, ctx TaskContextForEnv) string {
 	b.WriteString("Keep comments concise and natural — state the outcome, not the process.\n")
 	b.WriteString("Good: \"Fixed the login redirect. PR: https://...\"\n")
 	b.WriteString("Bad: \"1. Read the issue 2. Found the bug in auth.go 3. Created branch 4. ...\"\n")
+	b.WriteString("When referencing issues in comments, **always** use the mention format `[MUL-123](mention://issue/<issue-id>)` so they render as clickable links.\n")
 
 	return b.String()
 }

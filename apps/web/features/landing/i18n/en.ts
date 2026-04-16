@@ -14,6 +14,7 @@ export const en: LandingDict = {
     subheading:
       "Multica is an open-source platform that turns coding agents into real teammates. Assign tasks, track progress, compound skills \u2014 manage your human + agent workforce in one place.",
     cta: "Start free trial",
+    downloadDesktop: "Download Desktop",
     worksWith: "Works with",
     imageAlt: "Multica board view \u2014 issues managed by humans and agents",
   },
@@ -223,6 +224,7 @@ export const en: LandingDict = {
           { label: "Features", href: "#features" },
           { label: "How it Works", href: "#how-it-works" },
           { label: "Changelog", href: "/changelog" },
+          { label: "Desktop", href: "https://github.com/multica-ai/multica/releases/latest" },
         ],
       },
       resources: {
@@ -277,6 +279,52 @@ export const en: LandingDict = {
       fixes: "Bug Fixes",
     },
     entries: [
+      {
+        version: "0.2.1",
+        date: "2026-04-16",
+        title: "New Agent Runtimes",
+        changes: [],
+        features: [
+          "GitHub Copilot CLI runtime support",
+          "Cursor Agent CLI runtime support",
+          "Pi agent runtime support",
+          "Workspace URL refactor — slug-first routing (`/{slug}/issues`) with legacy URL redirects",
+        ],
+        fixes: [
+          "Codex threads resume across tasks on the same issue",
+          "Codex turn errors surfaced instead of reporting empty output",
+          "Workspace usage correctly bucketed by task completion time",
+          "Autopilot run history rows fully clickable",
+          "Workspace isolation enforced on additional daemon and GC endpoints (security)",
+          "HTML-escape workspace and inviter names in invitation emails",
+          "Dev and production desktop instances can now coexist",
+        ],
+      },
+      {
+        version: "0.2.0",
+        date: "2026-04-15",
+        title: "Desktop App, Autopilot & Invitations",
+        changes: [],
+        features: [
+          "Desktop app for macOS — native Electron app with tab system, built-in daemon management, immersive mode, and auto-update",
+          "Autopilot — scheduled and triggered automations for AI agents",
+          "Workspace invitations with email notifications and dedicated accept page",
+          "Custom CLI arguments per agent for advanced runtime configuration",
+          "Chat redesign with unread tracking and improved session management",
+          "Create Agent dialog shows runtime owner with Mine/All filter",
+        ],
+        improvements: [
+          "Inter font with CJK fallback and automatic CJK+Latin spacing",
+          "Sidebar user menu redesigned as full-row popover",
+          "WebSocket ping/pong heartbeat to detect dead connections",
+          "Members can now create agents and manage their own skills",
+        ],
+        fixes: [
+          "Agent now triggered on reply in threads where it already participated",
+          "Self-hosting: local uploads persist in Docker, WebSocket URL auto-derived for LAN access",
+          "Stale cmd+k recent issues resolved",
+        ],
+      },
       {
         version: "0.1.33",
         date: "2026-04-14",
