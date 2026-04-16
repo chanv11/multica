@@ -99,7 +99,7 @@ describe("UploadTab", () => {
       expect(onCreate).toHaveBeenCalledOnce();
     });
 
-    const call = onCreate.mock.calls[0][0];
+    const call = onCreate.mock.calls[0]![0];
     expect(call.name).toBe("my-skill");
     expect(call.content).toBe("# My Skill\n\nDoes things.");
     expect(call.files).toHaveLength(1);
