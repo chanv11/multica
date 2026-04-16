@@ -95,6 +95,13 @@ export function CreateAgentDialog({
         description: description.trim(),
         runtime_id: selectedRuntime.id,
         visibility,
+        ...(initialData && {
+          instructions: initialData.instructions,
+          avatar_url: initialData.avatar_url,
+          runtime_config: initialData.runtime_config,
+          custom_args: initialData.custom_args,
+          max_concurrent_tasks: initialData.max_concurrent_tasks,
+        }),
       });
       onClose();
     } catch (err) {

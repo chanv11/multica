@@ -255,10 +255,7 @@ export function AgentDetail({
           members={members}
           currentUserId={currentUserId}
           onClose={() => setShowCloneDialog(false)}
-          onCreate={async (data) => {
-            await onCreate(data);
-            setShowCloneDialog(false);
-          }}
+          onCreate={onCreate}
         />
       )}
     </div>
