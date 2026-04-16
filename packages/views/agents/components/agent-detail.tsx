@@ -13,8 +13,9 @@ import {
   Settings,
   KeyRound,
   Terminal,
+  Copy,
 } from "lucide-react";
-import type { Agent, RuntimeDevice, MemberWithUser } from "@multica/core/types";
+import type { Agent, RuntimeDevice, MemberWithUser, CreateAgentRequest } from "@multica/core/types";
 import {
   Dialog,
   DialogContent,
@@ -38,6 +39,7 @@ import { TasksTab } from "./tabs/tasks-tab";
 import { SettingsTab } from "./tabs/settings-tab";
 import { EnvTab } from "./tabs/env-tab";
 import { CustomArgsTab } from "./tabs/custom-args-tab";
+import { CreateAgentDialog } from "./create-agent-dialog";
 
 function getRuntimeDevice(agent: Agent, runtimes: RuntimeDevice[]): RuntimeDevice | undefined {
   return runtimes.find((runtime) => runtime.id === agent.runtime_id);
@@ -57,24 +59,29 @@ const detailTabs: { id: DetailTab; label: string; icon: typeof FileText }[] = [
 export function AgentDetail({
   agent,
   runtimes,
+  runtimesLoading,
   members,
   currentUserId,
   onUpdate,
   onArchive,
   onRestore,
+  onCreate,
 }: {
   agent: Agent;
   runtimes: RuntimeDevice[];
+  runtimesLoading?: boolean;
   members: MemberWithUser[];
   currentUserId: string | null;
   onUpdate: (id: string, data: Partial<Agent>) => Promise<void>;
   onArchive: (id: string) => Promise<void>;
   onRestore: (id: string) => Promise<void>;
+  onCreate: (data: CreateAgentRequest) => Promise<void>;
 }) {
   const st = statusConfig[agent.status];
   const runtimeDevice = getRuntimeDevice(agent, runtimes);
   const [activeTab, setActiveTab] = useState<DetailTab>("instructions");
   const [confirmArchive, setConfirmArchive] = useState(false);
+  const [showCloneDialog, setShowCloneDialog] = useState(false);
   const isArchived = !!agent.archived_at;
 
   return (
@@ -126,6 +133,12 @@ export function AgentDetail({
               <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-auto">
+              <DropdownMenuItem
+                onClick={() => setShowCloneDialog(true)}
+              >
+                <Copy className="h-3.5 w-3.5" />
+                Clone Agent
+              </DropdownMenuItem>
               <DropdownMenuItem
                 className="text-destructive"
                 onClick={() => setConfirmArchive(true)}
@@ -223,6 +236,30 @@ export function AgentDetail({
             </DialogFooter>
           </DialogContent>
         </Dialog>
+      )}
+      {showCloneDialog && (
+        <CreateAgentDialog
+          initialData={{
+            name: agent.name,
+            description: agent.description,
+            instructions: agent.instructions,
+            avatar_url: agent.avatar_url ?? undefined,
+            runtime_id: agent.runtime_id,
+            runtime_config: agent.runtime_config,
+            custom_args: agent.custom_args,
+            visibility: agent.visibility,
+            max_concurrent_tasks: agent.max_concurrent_tasks,
+          }}
+          runtimes={runtimes}
+          runtimesLoading={runtimesLoading}
+          members={members}
+          currentUserId={currentUserId}
+          onClose={() => setShowCloneDialog(false)}
+          onCreate={async (data) => {
+            await onCreate(data);
+            setShowCloneDialog(false);
+          }}
+        />
       )}
     </div>
   );
