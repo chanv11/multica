@@ -30,7 +30,10 @@ import { toast } from "sonner";
 
 type RuntimeFilter = "mine" | "all";
 
+export type CloneAgentInitialData = Omit<CreateAgentRequest, "custom_env">;
+
 export function CreateAgentDialog({
+  initialData,
   runtimes,
   runtimesLoading,
   members,
@@ -38,6 +41,7 @@ export function CreateAgentDialog({
   onClose,
   onCreate,
 }: {
+  initialData?: CloneAgentInitialData;
   runtimes: RuntimeDevice[];
   runtimesLoading?: boolean;
   members: MemberWithUser[];
@@ -45,9 +49,9 @@ export function CreateAgentDialog({
   onClose: () => void;
   onCreate: (data: CreateAgentRequest) => Promise<void>;
 }) {
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [visibility, setVisibility] = useState<AgentVisibility>("private");
+  const [name, setName] = useState(() => initialData?.name ? `${initialData.name} (copy)` : "");
+  const [description, setDescription] = useState(() => initialData?.description ?? "");
+  const [visibility, setVisibility] = useState<AgentVisibility>(() => initialData?.visibility ?? "private");
   const [creating, setCreating] = useState(false);
   const [runtimeOpen, setRuntimeOpen] = useState(false);
   const [runtimeFilter, setRuntimeFilter] = useState<RuntimeFilter>("mine");
@@ -70,7 +74,9 @@ export function CreateAgentDialog({
     });
   }, [runtimes, runtimeFilter, currentUserId]);
 
-  const [selectedRuntimeId, setSelectedRuntimeId] = useState(filteredRuntimes[0]?.id ?? "");
+  const [selectedRuntimeId, setSelectedRuntimeId] = useState(
+    () => initialData?.runtime_id ?? filteredRuntimes[0]?.id ?? ""
+  );
 
   useEffect(() => {
     if (!selectedRuntimeId && filteredRuntimes[0]) {
@@ -101,9 +107,9 @@ export function CreateAgentDialog({
     <Dialog open onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Create Agent</DialogTitle>
+          <DialogTitle>{initialData ? "Clone Agent" : "Create Agent"}</DialogTitle>
           <DialogDescription>
-            Create a new AI agent for your workspace.
+            {initialData ? "Create a new agent based on an existing configuration." : "Create a new AI agent for your workspace."}
           </DialogDescription>
         </DialogHeader>
 
@@ -285,7 +291,7 @@ export function CreateAgentDialog({
             onClick={handleSubmit}
             disabled={creating || !name.trim() || !selectedRuntime}
           >
-            {creating ? "Creating..." : "Create"}
+            {creating ? (initialData ? "Cloning..." : "Creating...") : (initialData ? "Clone" : "Create")}
           </Button>
         </DialogFooter>
       </DialogContent>
