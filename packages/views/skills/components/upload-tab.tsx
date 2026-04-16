@@ -56,6 +56,11 @@ function parseFolderFiles(fileList: FileList): Promise<ParsedFolder> {
   const textFiles = files.filter((f) => !isBinaryFile(f.name));
   const skippedCount = files.length - textFiles.length;
 
+  // Check empty folder
+  if (textFiles.length === 0) {
+    throw new Error("文件夹中没有可识别的文本文件");
+  }
+
   // Check file count
   if (textFiles.length > MAX_FILES) {
     throw new Error(`文件数量超过 ${MAX_FILES} 个上限（共 ${textFiles.length} 个文本文件）`);
@@ -86,6 +91,7 @@ function parseFolderFiles(fileList: FileList): Promise<ParsedFolder> {
   ).then((results) => {
     let skillContent = "";
     const supportingFiles: { path: string; content: string }[] = [];
+    const seenPaths = new Set<string>();
     let readSkipped = 0;
 
     for (const { file, content } of results) {
@@ -95,6 +101,10 @@ function parseFolderFiles(fileList: FileList): Promise<ParsedFolder> {
       }
       // Strip top-level folder name from path
       const relativePath = file.webkitRelativePath.split("/").slice(1).join("/");
+
+      // Deduplicate by normalized path
+      if (seenPaths.has(relativePath)) continue;
+      seenPaths.add(relativePath);
 
       if (relativePath === "SKILL.md" || relativePath.endsWith("/SKILL.md")) {
         skillContent = content;
