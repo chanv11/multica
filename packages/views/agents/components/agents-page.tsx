@@ -204,11 +204,13 @@ export function AgentsPage() {
             key={selected.id}
             agent={selected}
             runtimes={runtimes}
+            runtimesLoading={runtimesLoading}
             members={members}
             currentUserId={currentUser?.id ?? null}
             onUpdate={handleUpdate}
             onArchive={handleArchive}
             onRestore={handleRestore}
+            onCreate={handleCreate}
           />
         ) : (
           <div className="flex h-full flex-col items-center justify-center text-muted-foreground">
